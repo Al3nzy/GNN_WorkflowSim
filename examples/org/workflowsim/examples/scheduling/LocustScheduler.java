@@ -53,7 +53,7 @@ public class LocustScheduler {
 
                     repair(Xnew);
 
-                    // ===== Evaluate using real WorkflowSimEvaluator =====
+                    // ===== Evaluate using WorkflowSimEvaluator =====
                     WorkflowSimEvaluator.Result r = WorkflowSimEvaluator.evaluateAssignment(Xnew.getAssignment());
                     Xnew.setMakespan(r.makespan);
                     Xnew.setCost(r.cost);
@@ -69,7 +69,7 @@ public class LocustScheduler {
                     Schedule Xnew = mutate(Xi);
                     repair(Xnew);
 
-                    // ===== Evaluate using real WorkflowSimEvaluator =====
+                    // ===== Evaluate using WorkflowSimEvaluator =====
                     WorkflowSimEvaluator.Result r = WorkflowSimEvaluator.evaluateAssignment(Xnew.getAssignment());
                     Xnew.setMakespan(r.makespan);
                     Xnew.setCost(r.cost);
@@ -83,7 +83,7 @@ public class LocustScheduler {
 
             // Update global best
             Schedule bestInPop = Collections.min(population, Comparator.comparingDouble(Schedule::getFitness));
-            if (bestInPop.getFitness() < globalBest.getFitness()) {
+            if (globalBest == null || bestInPop.getFitness() < globalBest.getFitness()) {
                 globalBest = bestInPop.deepCopy();
             }
 
@@ -104,7 +104,7 @@ public class LocustScheduler {
             Schedule s = new Schedule(numTasks, numVMs);
             s.randomInitialize();
 
-            // ===== Evaluate using real WorkflowSimEvaluator =====
+            // ===== Evaluate using WorkflowSimEvaluator =====
             WorkflowSimEvaluator.Result r = WorkflowSimEvaluator.evaluateAssignment(s.getAssignment());
             s.setMakespan(r.makespan);
             s.setCost(r.cost);
@@ -124,7 +124,7 @@ public class LocustScheduler {
     private Schedule copyByProbability(Schedule Xi, Schedule Y, double influence) {
         Schedule copy = Xi.deepCopy();
         for (int k = 0; k < numTasks; k++) {
-            double pk = alpha * influence * (lambda + (1 - lambda)); // TODO: add task weighting if needed
+            double pk = alpha * influence * (lambda + (1 - lambda));
             if (Math.random() < pk) {
                 copy.getAssignment()[k] = Y.getAssignment()[k];
             }
@@ -152,8 +152,7 @@ public class LocustScheduler {
     }
 
     private void repair(Schedule s) {
-        // TODO: Call WorkflowSim APIs to enforce DAG precedence & VM capacity
-        // For now, assume WorkflowSim handles this during evaluation.
+        // Currently, WorkflowSimEvaluator handles task dependencies.
     }
 
     public Schedule getBestSchedule() {
@@ -170,7 +169,7 @@ class Schedule {
     private double cost;
     private double fitness;
 
-    private int numVMs;  // store number of VMs
+    private int numVMs;
 
     public Schedule(int numTasks, int numVMs) {
         this.assignment = new int[numTasks];
@@ -180,7 +179,7 @@ class Schedule {
     public void randomInitialize() {
         Random rand = new Random();
         for (int i = 0; i < assignment.length; i++) {
-            assignment[i] = rand.nextInt(numVMs); // pick VM in [0, numVMs-1]
+            assignment[i] = rand.nextInt(numVMs);
         }
     }
 

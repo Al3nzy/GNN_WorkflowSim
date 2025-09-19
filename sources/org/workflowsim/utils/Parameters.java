@@ -429,4 +429,8 @@ public class Parameters {
     public static List<String> getDAXPaths() {
         return daxPaths;
     }
+    
+    public static void setDaxPath(String path) {
+        daxPath = path;
+    }
 }
