@@ -17,7 +17,7 @@ import org.workflowsim.utils.ReplicaCatalog;
  */
 public class LocustDriver {
 
-    public static final String DAX_PATH = "examples/org/workflowsim/examples/workflowDatasets/Montage_100.xml";
+    public static final String DAX_PATH = "examples/org/workflowsim/examples/workflowDatasets/Montage_50.xml";
 
     public static void main(String[] args) {
         try {
@@ -31,7 +31,7 @@ public class LocustDriver {
             }
 
             // 2) Initialize WorkflowSim Parameters & ReplicaCatalog
-            int vmNum = 10;
+            int vmNum = 5;
             OverheadParameters op = new OverheadParameters(0, null, null, null, null, 0);
             ClusteringParameters cp = new ClusteringParameters(0, 0,
                     ClusteringParameters.ClusteringMethod.NONE, null);
@@ -52,7 +52,7 @@ public class LocustDriver {
 
             // 4) Configure and run LocustScheduler using surrogate evaluations
             int populationSize = 30;
-            int maxIterations = 2; // reduce while testing
+            int maxIterations = 5; // reduce while testing
             int numTasks = parsedNumTasks;
             int numVMs = vmNum;
 
@@ -78,8 +78,15 @@ public class LocustDriver {
                 WorkflowSimEvaluator.FULL_SIM = true;
                 WorkflowSimEvaluator.PRINT_CLOUDLETS = true;
                 WorkflowSimEvaluator.Result finalRes = WorkflowSimEvaluator.evaluateAssignment(best.getAssignment());
-                System.out.printf("FINAL: Fitness=%.6f Makespan=%.3f Cost=%.3f%n",
-                        finalRes.fitness, finalRes.makespan, finalRes.cost);
+
+                System.out.println("---------- FINAL METRICS (Locust) ----------");
+                System.out.printf(
+                    "Fitness=%.6f%nMakespan=%.3f%nCost=%.3f%nUtilization=%.3f%nThroughput=%.3f%nAvgResponse=%.3f%nAvgWaiting=%.3f%nLoadBalance=%.3f%n",
+                    finalRes.fitness, finalRes.makespan, finalRes.cost,
+                    finalRes.utilization, finalRes.throughput,
+                    finalRes.avgResponse, finalRes.avgWaiting, finalRes.loadBalance
+                );
+
             } else {
                 System.out.println("Locust returned no best schedule.");
             }

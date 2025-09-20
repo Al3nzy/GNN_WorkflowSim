@@ -88,7 +88,7 @@ public class HEFTPlanningAlgorithmExample1 extends WorkflowSimBasicExample1 {
             /**
              * Should change this based on real physical path
              */
-            String daxPath = "/Users/User/Desktop/WorkflowSim-1.0-master/WorkflowSim-1.0-master/config/dax/Montage_100.xml";
+            String daxPath = "examples/org/workflowsim/examples/workflowDatasets/Montage_50.xml";
 
             File daxFile = new File(daxPath);
             if (!daxFile.exists()) {
