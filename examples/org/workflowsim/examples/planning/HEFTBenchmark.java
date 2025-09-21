@@ -61,7 +61,7 @@ public class HEFTBenchmark extends WorkflowSimBasicExample1 {
     public static void main(String[] args) {
         try {
             int vmNum = 5; // must also be used in Locust for fair comparison
-            String daxPath = "examples/org/workflowsim/examples/workflowDatasets/Montage_50.xml";
+            String daxPath = "examples/org/workflowsim/examples/workflowDatasets/Montage_1000.xml";
 
             File daxFile = new File(daxPath);
             if (!daxFile.exists()) {
@@ -170,3 +170,14 @@ public class HEFTBenchmark extends WorkflowSimBasicExample1 {
 //AvgWaiting=50.741
 //LoadBalance=6.152
 //=== LocustDriver finished ===
+
+//1000 task
+//=== FINAL METRICS (Locust) ===
+//---------- METRICS (HEFT) ----------
+//Makespan       = 2315.69
+//Cost           = 34146.78
+//Utilization    = 0.983
+//Throughput     = 0.432
+//Avg Response   = 11.382
+//Avg Waiting    = 1151.758
+//Load Balanceσ  = 28.584
