@@ -1,0 +1,291 @@
+/**
+ * Copyright 2012-2013 University Of Southern California
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy of
+ * the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
+package org.workflowsim.examples.planning;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.LinkedList;
+import java.util.List;
+import org.cloudbus.cloudsim.CloudletSchedulerSpaceShared;
+import org.cloudbus.cloudsim.DatacenterCharacteristics;
+import org.cloudbus.cloudsim.HarddriveStorage;
+import org.cloudbus.cloudsim.Host;
+import org.cloudbus.cloudsim.Log;
+import org.cloudbus.cloudsim.Pe;
+import org.cloudbus.cloudsim.Storage;
+import org.cloudbus.cloudsim.VmAllocationPolicySimple;
+import org.cloudbus.cloudsim.VmSchedulerTimeShared;
+import org.cloudbus.cloudsim.core.CloudSim;
+import org.cloudbus.cloudsim.provisioners.BwProvisionerSimple;
+import org.cloudbus.cloudsim.provisioners.PeProvisionerSimple;
+import org.cloudbus.cloudsim.provisioners.RamProvisionerSimple;
+import org.workflowsim.CondorVM;
+import org.workflowsim.Job;
+import org.workflowsim.WorkflowDatacenter;
+import org.workflowsim.WorkflowEngine;
+import org.workflowsim.WorkflowPlanner;
+import org.workflowsim.examples.WorkflowSimBasicExample1;
+import org.workflowsim.utils.ClusteringParameters;
+import org.workflowsim.utils.OverheadParameters;
+import org.workflowsim.utils.Parameters;
+import org.workflowsim.utils.ReplicaCatalog;
+
+/**
+ * Standalone example for LIWSAPlanningAlgorithm (Density-Adaptive
+ * Multi-Objective Locust-Inspired Workflow Scheduling Algorithm).
+ *
+ * Structure mirrors HEFTPlanningAlgorithmExample1 exactly so it drops
+ * into the same examples/planning/ package and runs the same way.
+ *
+ * All user-configurable settings are in the CONFIGURATION block at the
+ * top of main(). Edit that block; nothing else needs to change.
+ *
+ * Prerequisites:
+ *   1. Add LIWSA to the PlanningAlgorithm enum in Parameters.java
+ *   2. Add a LIWSA case to WorkflowPlanner.getPlanningAlgorithm()
+ *   3. Place LIWSAPlanningAlgorithm.java in sources/org/workflowsim/planning/
+ *   (See SOURCE_PATCHES.txt for the exact lines to change.)
+ */
+public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
+
+    // ---------------------------------------------------------------
+    // VM type definitions used by createHeterogeneousVMs().
+    // Each row: { mips, bandwidthMbitS, costPerSec, ram_MB,
+    //             storage_MB, count }
+    // These match the paper's cloud infrastructure description.
+    // ---------------------------------------------------------------
+    private static final double[][] VM_TYPES = {
+        //  mips    bw     cost   ram    storage  count
+        { 250.0, 160.0, 0.15, 512, 10000, 4},  // Micro  x4
+        { 500.0, 160.0, 0.30, 512, 10000, 4},  // Small  x4
+        {1000.0, 160.0, 0.60, 512, 10000, 4},  // Medium x4
+        {2000.0, 160.0, 0.90, 512, 10000, 4},  // Large  x4
+    };
+
+    /**
+     * Creates the heterogeneous VM pool from VM_TYPES, setting per-second
+     * CPU cost explicitly so that LIWSAPlanningAlgorithm.getCost() returns
+     * the correct value during Pareto fitness evaluation.
+     */
+    protected static List<CondorVM> createHeterogeneousVMs(int userId) {
+        LinkedList<CondorVM> list = new LinkedList<>();
+        int vmId = 0;
+        for (double[] type : VM_TYPES) {
+            double mips        = type[0];
+            long   bw          = (long) type[1];  // Mbit/s
+            double cost        = type[2];          // per second of CPU use
+            int    ram         = (int)  type[3];   // MB
+            long   storage     = (long) type[4];   // MB
+            int    count       = (int)  type[5];
+            for (int k = 0; k < count; k++) {
+                // Full CondorVM constructor: sets getCost() to the per-second rate.
+                list.add(new CondorVM(
+                    vmId++, userId,
+                    mips,
+                    /*numberOfPes=*/ 1,
+                    ram,
+                    bw,
+                    storage,
+                    "Xen",
+                    cost,          // getCost()   -> cost per CPU-second
+                    0.0,           // costPerMem
+                    0.0,           // costPerStorage
+                    0.0,           // costPerBW
+                    new CloudletSchedulerSpaceShared()
+                ));
+            }
+        }
+        return list;
+    }
+
+    /**
+     * Datacenter sized to accommodate the VM pool: one host per four VMs,
+     * each with 16 CPUs at 2000 MIPS and 8 GB RAM. Bandwidth 100 Gbit/s
+     * so scheduling decisions (not host network capacity) dominate.
+     */
+    protected static WorkflowDatacenter createHeterogeneousDatacenter(String name) {
+        // Total VMs from VM_TYPES
+        int totalVMs = 0;
+        for (double[] t : VM_TYPES) { totalVMs += (int) t[5]; }
+        int numHosts = Math.max(1, (totalVMs + 3) / 4);
+
+        List<Host> hostList = new ArrayList<>();
+        for (int h = 0; h < numHosts; h++) {
+            List<Pe> peList = new ArrayList<>();
+            for (int p = 0; p < 16; p++) {
+                peList.add(new Pe(p, new PeProvisionerSimple(2000)));
+            }
+            hostList.add(new Host(
+                h,
+                new RamProvisionerSimple(8192),
+                new BwProvisionerSimple(100000),
+                1000000L,
+                peList,
+                new VmSchedulerTimeShared(peList)
+            ));
+        }
+
+        DatacenterCharacteristics dc = new DatacenterCharacteristics(
+            "x86", "Linux", "Xen", hostList,
+            10.0,   // timezone
+            3.0,    // cost per PE (not used by LIWSA, but required by WorkflowSim)
+            0.05,   // costPerMem
+            0.1,    // costPerStorage
+            0.1     // costPerBW
+        );
+
+        WorkflowDatacenter datacenter = null;
+        try {
+            HarddriveStorage storage = new HarddriveStorage(name, 1e12);
+            storage.setMaxTransferRate(100);   // MB/s internal datacenter bandwidth
+            LinkedList<Storage> storageList = new LinkedList<>();
+            storageList.add(storage);
+            datacenter = new WorkflowDatacenter(
+                name, dc, new VmAllocationPolicySimple(hostList), storageList, 0
+            );
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return datacenter;
+    }
+
+    public static void main(String[] args) {
+        try {
+
+            // ==============================================================
+            // CONFIGURATION — edit this block only
+            // ==============================================================
+
+            // Path to the workflow DAX file. Paths available in config/dax/:
+            //   Montage_50.xml  Montage_100.xml  Montage_1000.xml
+            //   CyberShake_30.xml  CyberShake_50.xml  CyberShake_100.xml
+            //   Epigenomics_100.xml  SIPHT_60.xml  SIPHT_100.xml
+            //   LIGO_50.xml  LIGO_100.xml  (etc.)
+            String daxPath = "config/dax/Montage_50.xml";
+
+            // LIWSA algorithm parameters (passed via LIWSAPlanningAlgorithm setters).
+            // populationSize: number of candidate schedules maintained in the swarm.
+            //   Larger -> better solutions, slower per generation.
+            // generationCount: number of evolution iterations.
+            //   100 generations is a reasonable starting point; increase to 200-500
+            //   for larger workflows or if results show the front still changing late.
+            // randomSeed: fix for reproducible results; set to -1 for random.
+            int populationSize = 30;
+            int generationCount = 100;
+            long randomSeed = 7L;
+
+            // ==============================================================
+            // END CONFIGURATION
+            // ==============================================================
+
+            File daxFile = new File(daxPath);
+            if (!daxFile.exists()) {
+                Log.printLine("DAX file not found: " + daxPath);
+                Log.printLine("Please update daxPath in the CONFIGURATION block.");
+                return;
+            }
+
+            // Count total VMs from the type table
+            int totalVMs = 0;
+            for (double[] t : VM_TYPES) { totalVMs += (int) t[5]; }
+
+            Parameters.SchedulingAlgorithm sch_method = Parameters.SchedulingAlgorithm.STATIC;
+            Parameters.PlanningAlgorithm pln_method = Parameters.PlanningAlgorithm.LIWSA;
+            ReplicaCatalog.FileSystem file_system = ReplicaCatalog.FileSystem.LOCAL;
+
+            OverheadParameters op = new OverheadParameters(0, null, null, null, null, 0);
+            ClusteringParameters cp = new ClusteringParameters(
+                0, 0, ClusteringParameters.ClusteringMethod.NONE, null
+            );
+
+            Parameters.init(totalVMs, daxPath, null, null, op, cp, sch_method, pln_method, null, 0);
+            ReplicaCatalog.init(file_system);
+
+            CloudSim.init(1, Calendar.getInstance(), false);
+
+            WorkflowDatacenter datacenter0 = createHeterogeneousDatacenter("Datacenter_0");
+
+            WorkflowPlanner wfPlanner = new WorkflowPlanner("planner_0", 1);
+            WorkflowEngine wfEngine = wfPlanner.getWorkflowEngine();
+
+            // Pass LIWSA parameters through the algorithm before the engine
+            // submits the VM list. WorkflowPlanner instantiates the planner
+            // object internally via the Parameters enum, so we reach it through
+            // the planner reference and cast.
+            // NOTE: if WorkflowPlanner does not expose getPlanningAlgorithm(),
+            // move these setters into LIWSAPlanningAlgorithm's no-arg constructor
+            // defaults and edit the constants directly in the source file instead.
+            try {
+                org.workflowsim.planning.LIWSAPlanningAlgorithm liwsa =
+                    (org.workflowsim.planning.LIWSAPlanningAlgorithm)
+                    wfPlanner.getClass()
+                             .getDeclaredMethod("getPlanningAlgorithm",
+                                                Parameters.PlanningAlgorithm.class)
+                             .invoke(wfPlanner, Parameters.PlanningAlgorithm.LIWSA);
+                if (liwsa != null) {
+                    liwsa.setPopulationSize(populationSize);
+                    liwsa.setGenerationCount(generationCount);
+                    liwsa.setRandomSeed(randomSeed);
+                }
+            } catch (Exception ignored) {
+                // Parameter injection via reflection failed (private method).
+                // The algorithm will run with its constructor defaults (pop=30,
+                // gen=100) which are the same values. To change them, edit the
+                // field initialisers at the top of LIWSAPlanningAlgorithm.java.
+                Log.printLine("[LIWSA] Note: running with default parameters "
+                    + "(pop=" + populationSize + ", gen=" + generationCount + ")");
+            }
+
+            List<CondorVM> vmlist0 = createHeterogeneousVMs(wfEngine.getSchedulerId(0));
+            wfEngine.submitVmList(vmlist0, 0);
+            wfEngine.bindSchedulerDatacenter(datacenter0.getId(), 0);
+
+            CloudSim.startSimulation();
+            List<Job> outputList0 = wfEngine.getJobsReceivedList();
+            CloudSim.stopSimulation();
+
+            printJobList(outputList0);
+            printSummary(outputList0);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            Log.printLine("Simulation terminated due to an unexpected error.");
+        }
+    }
+
+    /**
+     * Prints a single-line summary: total makespan and total execution cost.
+     * Makespan = max finish time across all jobs.
+     * Cost = sum of (actualCPUTime * vm cost rate) -- note: WorkflowSim's
+     * job.getCostPerSec() returns the VM's getCost() value set at construction.
+     */
+    protected static void printSummary(List<Job> jobs) {
+        double makespan = 0.0;
+        double totalCost = 0.0;
+        for (Job job : jobs) {
+            if (job.getClassType() == org.workflowsim.utils.Parameters.ClassType.STAGE_IN.value) {
+                continue;
+            }
+            makespan = Math.max(makespan, job.getFinishTime());
+            totalCost += job.getActualCPUTime() * job.getCostPerSec();
+        }
+        Log.printLine("");
+        Log.printLine("=== SUMMARY ===");
+        Log.printLine(String.format("  Makespan : %.2f s", makespan));
+        Log.printLine(String.format("  Cost     : %.4f", totalCost));
+    }
+}

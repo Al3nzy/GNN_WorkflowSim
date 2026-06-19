@@ -24,6 +24,9 @@ import org.cloudbus.cloudsim.core.SimEvent;
 import org.workflowsim.planning.BasePlanningAlgorithm;
 import org.workflowsim.planning.DHEFTPlanningAlgorithm;
 import org.workflowsim.planning.HEFTPlanningAlgorithm;
+import org.workflowsim.planning.LIWSAMLPlanningAlgorithm;
+import org.workflowsim.planning.LIWSAPlanningAlgorithm;
+import org.workflowsim.planning.MLEAOPlanningAlgorithm;
 import org.workflowsim.planning.RandomPlanningAlgorithm;
 import org.workflowsim.utils.Parameters;
 import org.workflowsim.utils.Parameters.PlanningAlgorithm;
@@ -189,6 +192,15 @@ public final class WorkflowPlanner extends SimEntity {
                 break;
             case DHEFT:
                 planner = new DHEFTPlanningAlgorithm();
+                break;
+            case LIWSA:
+                planner = new LIWSAPlanningAlgorithm();
+                break;
+            case MLEAO:
+                planner = new MLEAOPlanningAlgorithm();
+                break;
+            case LIWSAML:
+                planner = new LIWSAMLPlanningAlgorithm();
                 break;
             default:
                 planner = null;
