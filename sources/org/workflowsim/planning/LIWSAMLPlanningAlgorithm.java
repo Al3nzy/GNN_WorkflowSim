@@ -88,6 +88,16 @@ public class LIWSAMLPlanningAlgorithm extends LIWSAPlanningAlgorithm {
      *  the weight for the most makespan-focused seed. */
     private double[] makespanWeights = {0.9, 0.7, 0.5, 0.3};
 
+    /**
+     * STATIC configuration, same rationale as LIWSAPlanningAlgorithm's
+     * CONFIG_* fields: WorkflowPlanner constructs this class with a no-arg
+     * constructor internally, so static fields read at construction time
+     * are the only reliable way to configure a WorkflowSim-driven run.
+     */
+    public static int CONFIG_NUM_TRAINING_SAMPLES = 400;
+    public static int CONFIG_NUM_PREDICTOR_SEEDS = 4;
+    public static double CONFIG_PRED_TEMPERATURE = 0.5;
+
     // ---- learned model coefficients ----
     private double[] coefMakespan = null;
     private double[] coefCost = null;
@@ -106,6 +116,9 @@ public class LIWSAMLPlanningAlgorithm extends LIWSAPlanningAlgorithm {
 
     public LIWSAMLPlanningAlgorithm() {
         super();
+        this.numTrainingSamples = CONFIG_NUM_TRAINING_SAMPLES;
+        this.predTemperature = CONFIG_PRED_TEMPERATURE;
+        setNumPredictorSeeds(CONFIG_NUM_PREDICTOR_SEEDS);
     }
 
     public void setNumTrainingSamples(int numTrainingSamples) {

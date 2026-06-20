@@ -70,6 +70,33 @@ public class MLEAOPlanningAlgorithm extends BasePlanningAlgorithm {
     private double mutationRate = 0.02;
     private Long randomSeed = null;
 
+    /**
+     * STATIC configuration. See the identical note in
+     * LIWSAPlanningAlgorithm: WorkflowPlanner constructs this class
+     * internally with a no-arg constructor, so static fields read at
+     * construction time are the only reliable injection point for a
+     * WorkflowSim-driven run.
+     */
+    public static int CONFIG_POPULATION_SIZE = 30;
+    public static int CONFIG_GENERATION_COUNT = 100;
+    public static Long CONFIG_RANDOM_SEED = null;
+
+    /**
+     * Snapshot of the most recently completed run. Same single-threaded,
+     * sequential-runs-only safety caveat as LIWSAPlanningAlgorithm.lastRun.
+     */
+    public static volatile LastRunMetrics lastRun = null;
+
+    public static class LastRunMetrics {
+        public double chosenMakespan;
+        public double chosenCost;
+        public int paretoFrontSize;
+        public List<double[]> paretoFrontPoints;
+        public long searchWallClockMillis;
+        public int populationSizeUsed;
+        public int generationCountUsed;
+    }
+
     // ---- problem data, set once at the start of run() ----
     private List<Task> taskOrder;
     private List<CondorVM> vmList;
@@ -99,6 +126,9 @@ public class MLEAOPlanningAlgorithm extends BasePlanningAlgorithm {
     }
 
     public MLEAOPlanningAlgorithm() {
+        this.populationSize = CONFIG_POPULATION_SIZE;
+        this.generationCount = CONFIG_GENERATION_COUNT;
+        this.randomSeed = CONFIG_RANDOM_SEED;
     }
 
     public void setPopulationSize(int populationSize) {
@@ -134,6 +164,7 @@ public class MLEAOPlanningAlgorithm extends BasePlanningAlgorithm {
     public void run() {
         Log.printLine("MLEAO planner running with " + getTaskList().size()
                 + " tasks, " + getVmList().size() + " VMs.");
+        long searchStartMillis = System.currentTimeMillis();
 
         vmList = new ArrayList<>();
         for (Object vmObject : getVmList()) {
@@ -218,6 +249,19 @@ public class MLEAOPlanningAlgorithm extends BasePlanningAlgorithm {
         int[] finalFrontNumber = new int[populationSize];
         List<List<Integer>> finalFronts = nonDominatedSort(finalFrontNumber);
         int chosen = bestOf(finalFronts.get(0));
+
+        LastRunMetrics metrics = new LastRunMetrics();
+        metrics.chosenMakespan = makespans[chosen];
+        metrics.chosenCost = costs[chosen];
+        metrics.paretoFrontSize = finalFronts.get(0).size();
+        metrics.paretoFrontPoints = new ArrayList<>();
+        for (int i : finalFronts.get(0)) {
+            metrics.paretoFrontPoints.add(new double[]{makespans[i], costs[i]});
+        }
+        metrics.searchWallClockMillis = System.currentTimeMillis() - searchStartMillis;
+        metrics.populationSizeUsed = populationSize;
+        metrics.generationCountUsed = generationCount;
+        lastRun = metrics;
 
         commitAssignment(population.get(chosen));
 

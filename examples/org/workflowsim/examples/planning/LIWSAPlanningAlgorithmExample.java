@@ -175,7 +175,7 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
             //   CyberShake_30.xml  CyberShake_50.xml  CyberShake_100.xml
             //   Epigenomics_100.xml  SIPHT_60.xml  SIPHT_100.xml
             //   LIGO_50.xml  LIGO_100.xml  (etc.)
-            String daxPath = "config/dax/Montage_50.xml";
+            String daxPath = "config/dax/Montage_1000.xml";
 
             // LIWSA algorithm parameters (passed via LIWSAPlanningAlgorithm setters).
             // populationSize: number of candidate schedules maintained in the swarm.
@@ -212,7 +212,30 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
                 0, 0, ClusteringParameters.ClusteringMethod.NONE, null
             );
 
+            // Parameter injection: WorkflowPlanner constructs the planning
+            // algorithm internally with `new LIWSAPlanningAlgorithm()` as a
+            // local variable inside processPlanning(), triggered only once
+            // CloudSim.startSimulation() begins processing events -- there
+            // is no point in that flow where external code can reach the
+            // real instance before run() executes. Static fields, read by
+            // the no-arg constructor at construction time, are the only
+            // injection point that actually works here.
+            org.workflowsim.planning.LIWSAPlanningAlgorithm.CONFIG_POPULATION_SIZE = populationSize;
+            org.workflowsim.planning.LIWSAPlanningAlgorithm.CONFIG_GENERATION_COUNT = generationCount;
+            org.workflowsim.planning.LIWSAPlanningAlgorithm.CONFIG_RANDOM_SEED = randomSeed;
+
             Parameters.init(totalVMs, daxPath, null, null, op, cp, sch_method, pln_method, null, 0);
+
+            // Cost model fix: WorkflowSim defaults to CostModel.DATACENTER,
+            // which bills every job at one flat datacenter-wide rate
+            // regardless of which VM it ran on. CostModel.VM uses each
+            // VM's own cost rate (the 0.15/0.30/0.60/0.90 schedule set in
+            // createHeterogeneousVMs above), which is what LIWSA's own
+            // internal fitness function assumes when it plans a schedule --
+            // without this line, the makespan/cost trade-offs LIWSA found
+            // during planning will not match what gets reported here.
+            Parameters.setCostModel(Parameters.CostModel.VM);
+
             ReplicaCatalog.init(file_system);
 
             CloudSim.init(1, Calendar.getInstance(), false);
@@ -222,34 +245,6 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
             WorkflowPlanner wfPlanner = new WorkflowPlanner("planner_0", 1);
             WorkflowEngine wfEngine = wfPlanner.getWorkflowEngine();
 
-            // Pass LIWSA parameters through the algorithm before the engine
-            // submits the VM list. WorkflowPlanner instantiates the planner
-            // object internally via the Parameters enum, so we reach it through
-            // the planner reference and cast.
-            // NOTE: if WorkflowPlanner does not expose getPlanningAlgorithm(),
-            // move these setters into LIWSAPlanningAlgorithm's no-arg constructor
-            // defaults and edit the constants directly in the source file instead.
-            try {
-                org.workflowsim.planning.LIWSAPlanningAlgorithm liwsa =
-                    (org.workflowsim.planning.LIWSAPlanningAlgorithm)
-                    wfPlanner.getClass()
-                             .getDeclaredMethod("getPlanningAlgorithm",
-                                                Parameters.PlanningAlgorithm.class)
-                             .invoke(wfPlanner, Parameters.PlanningAlgorithm.LIWSA);
-                if (liwsa != null) {
-                    liwsa.setPopulationSize(populationSize);
-                    liwsa.setGenerationCount(generationCount);
-                    liwsa.setRandomSeed(randomSeed);
-                }
-            } catch (Exception ignored) {
-                // Parameter injection via reflection failed (private method).
-                // The algorithm will run with its constructor defaults (pop=30,
-                // gen=100) which are the same values. To change them, edit the
-                // field initialisers at the top of LIWSAPlanningAlgorithm.java.
-                Log.printLine("[LIWSA] Note: running with default parameters "
-                    + "(pop=" + populationSize + ", gen=" + generationCount + ")");
-            }
-
             List<CondorVM> vmlist0 = createHeterogeneousVMs(wfEngine.getSchedulerId(0));
             wfEngine.submitVmList(vmlist0, 0);
             wfEngine.bindSchedulerDatacenter(datacenter0.getId(), 0);
@@ -257,6 +252,22 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
             CloudSim.startSimulation();
             List<Job> outputList0 = wfEngine.getJobsReceivedList();
             CloudSim.stopSimulation();
+
+            // Report what LIWSA's internal search actually found, alongside
+            // what the simulator reports for the committed schedule. These
+            // should be close; large gaps would suggest the decoder's
+            // assumptions (e.g. transfer cost model) don't fully match how
+            // WorkflowSim itself executes the schedule.
+            if (org.workflowsim.planning.LIWSAPlanningAlgorithm.lastRun != null) {
+                org.workflowsim.planning.LIWSAPlanningAlgorithm.LastRunMetrics m =
+                    org.workflowsim.planning.LIWSAPlanningAlgorithm.lastRun;
+                Log.printLine("");
+                Log.printLine("=== LIWSA SEARCH SUMMARY ===");
+                Log.printLine(String.format("  Pareto front size : %d", m.paretoFrontSize));
+                Log.printLine(String.format("  Planned makespan  : %.2f s", m.chosenMakespan));
+                Log.printLine(String.format("  Planned cost      : %.4f", m.chosenCost));
+                Log.printLine(String.format("  Search wall clock : %d ms", m.searchWallClockMillis));
+            }
 
             printJobList(outputList0);
             printSummary(outputList0);

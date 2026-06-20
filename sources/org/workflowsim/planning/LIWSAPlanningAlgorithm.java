@@ -70,6 +70,50 @@ public class LIWSAPlanningAlgorithm extends BasePlanningAlgorithm {
     private double kernelL = 0.3;
     private Long randomSeed = null;
 
+    /**
+     * STATIC configuration. WorkflowPlanner.processPlanning() constructs
+     * this class with `new LIWSAPlanningAlgorithm()` internally, as a local
+     * variable, then immediately calls run() -- there is no point in that
+     * flow where external code can call instance setters before run()
+     * executes. These static fields are read once in the constructor and
+     * are therefore the only injection point that actually reaches a
+     * WorkflowSim-driven run. Set them from your example/benchmark driver
+     * BEFORE calling CloudSim.startSimulation(); a fresh instance reads
+     * the current values each time CloudSim.init() + startSimulation() is
+     * run, so changing them between sequential simulations (e.g. to sweep
+     * seeds) works correctly.
+     *
+     * The instance setters below (setPopulationSize, etc.) are still
+     * provided for direct unit-testing / manual instantiation outside
+     * WorkflowSim, but have no effect when this class is run through
+     * WorkflowPlanner -- use the static fields for that path.
+     */
+    public static int CONFIG_POPULATION_SIZE = 30;
+    public static int CONFIG_GENERATION_COUNT = 100;
+    public static Long CONFIG_RANDOM_SEED = null;
+
+    /**
+     * Snapshot of the most recently completed run, published at the end of
+     * run(). CloudSim/WorkflowSim is single-threaded and each simulation
+     * (CloudSim.init() ... CloudSim.stopSimulation()) constructs and runs
+     * exactly one planning algorithm instance, so reading this immediately
+     * after CloudSim.stopSimulation() and before starting the next
+     * simulation is safe. Not safe for concurrent/parallel simulation runs
+     * within a single JVM.
+     */
+    public static volatile LastRunMetrics lastRun = null;
+
+    public static class LastRunMetrics {
+        public double chosenMakespan;
+        public double chosenCost;
+        public int paretoFrontSize;
+        /** Each element is {makespan, cost} for one member of the final Pareto front. */
+        public List<double[]> paretoFrontPoints;
+        public long searchWallClockMillis;
+        public int populationSizeUsed;
+        public int generationCountUsed;
+    }
+
     // ---- problem data, set once at the start of run() ----
     protected List<Task> taskOrder;
     protected List<CondorVM> vmList;
@@ -82,8 +126,8 @@ public class LIWSAPlanningAlgorithm extends BasePlanningAlgorithm {
     protected List<int[]> population;
     protected double[] makespans;
     protected double[] costs;
-    protected int populationSize = 30;
-    protected int generationCount = 100;
+    protected int populationSize = CONFIG_POPULATION_SIZE;
+    protected int generationCount = CONFIG_GENERATION_COUNT;
     private List<int[]> seedGenotypes;
 
     private static class Event {
@@ -98,6 +142,9 @@ public class LIWSAPlanningAlgorithm extends BasePlanningAlgorithm {
     }
 
     public LIWSAPlanningAlgorithm() {
+        this.populationSize = CONFIG_POPULATION_SIZE;
+        this.generationCount = CONFIG_GENERATION_COUNT;
+        this.randomSeed = CONFIG_RANDOM_SEED;
     }
 
     public void setPopulationSize(int populationSize) {
@@ -135,6 +182,7 @@ public class LIWSAPlanningAlgorithm extends BasePlanningAlgorithm {
     public void run() {
         Log.printLine("LIWSA planner running with " + getTaskList().size()
                 + " tasks, " + getVmList().size() + " VMs.");
+        long searchStartMillis = System.currentTimeMillis();
 
         vmList = new ArrayList<>();
         for (Object vmObject : getVmList()) {
@@ -192,6 +240,21 @@ public class LIWSAPlanningAlgorithm extends BasePlanningAlgorithm {
         int[] finalFrontNumber = new int[populationSize];
         List<List<Integer>> finalFronts = nonDominatedSort(finalFrontNumber);
         int chosen = bestOf(finalFronts.get(0));
+
+        // Capture metrics before committing, while makespans/costs/population
+        // still hold the full final state.
+        LastRunMetrics metrics = new LastRunMetrics();
+        metrics.chosenMakespan = makespans[chosen];
+        metrics.chosenCost = costs[chosen];
+        metrics.paretoFrontSize = finalFronts.get(0).size();
+        metrics.paretoFrontPoints = new ArrayList<>();
+        for (int i : finalFronts.get(0)) {
+            metrics.paretoFrontPoints.add(new double[]{makespans[i], costs[i]});
+        }
+        metrics.searchWallClockMillis = System.currentTimeMillis() - searchStartMillis;
+        metrics.populationSizeUsed = populationSize;
+        metrics.generationCountUsed = generationCount;
+        lastRun = metrics;
 
         commitAssignment(population.get(chosen));
 
