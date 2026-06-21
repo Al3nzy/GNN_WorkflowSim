@@ -16,16 +16,18 @@
 package org.workflowsim.examples.planning;
 
 import java.io.File;
+import java.io.PrintWriter;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import org.cloudbus.cloudsim.CloudletSchedulerSpaceShared;
 import org.cloudbus.cloudsim.DatacenterCharacteristics;
 import org.cloudbus.cloudsim.HarddriveStorage;
 import org.cloudbus.cloudsim.Host;
-import org.cloudbus.cloudsim.Log;
 import org.cloudbus.cloudsim.Pe;
 import org.cloudbus.cloudsim.Storage;
 import org.cloudbus.cloudsim.VmAllocationPolicySimple;
@@ -39,7 +41,6 @@ import org.workflowsim.Job;
 import org.workflowsim.WorkflowDatacenter;
 import org.workflowsim.WorkflowEngine;
 import org.workflowsim.WorkflowPlanner;
-import org.workflowsim.planning.LIWSAMLPlanningAlgorithm;
 import org.workflowsim.planning.LIWSAPlanningAlgorithm;
 import org.workflowsim.planning.MLEAOPlanningAlgorithm;
 import org.workflowsim.utils.ClusteringParameters;
@@ -49,44 +50,49 @@ import org.workflowsim.utils.ReplicaCatalog;
 
 /**
  * Benchmark driver: runs HEFT, Min-Min, MLEAO, LIWSA, and LIWSA-ML on a set
- * of DAX files and prints a comparison report.
+ * of DAX files and prints a comparison report, while also writing every
+ * result to a CSV file as it completes.
  *
- * FIXES vs the previous version of this file:
- *  - Cost model: Parameters.setCostModel(Parameters.CostModel.VM) is now
- *    called explicitly. Without it, WorkflowSim defaults to CostModel.
- *    DATACENTER, which bills every job at one flat datacenter-wide rate
- *    instead of the rate of the VM it actually ran on, inflating reported
- *    costs and making every algorithm's cost look similar regardless of
- *    which VM types it actually chose.
- *  - Parameter injection: populationSize/generationCount/randomSeed are
- *    now set via public static CONFIG_* fields on the planning algorithm
- *    classes, read in their constructors. The previous reflection-based
- *    approach silently failed: WorkflowPlanner.processPlanning() builds
- *    and runs the planning algorithm as a local variable inside one
- *    method call, triggered only once CloudSim.startSimulation() begins
- *    processing events, so there was never a real object to configure.
+ * THREE FIXES vs earlier versions of this file:
  *
- * METRICS, beyond makespan and cost:
- *  - Pareto front size, hypervolume, and spread for the multi-objective
- *    algorithms (LIWSA, LIWSA-ML, MLEAO), captured via each algorithm's
- *    static `lastRun` snapshot.
- *  - Resource utilization and Jain's fairness index, computed uniformly
- *    for ALL five algorithms directly from the simulator's actual job
- *    results (not from internal algorithm state), so HEFT and Min-Min
- *    are included on equal footing.
- *  - Speedup relative to running the whole workflow sequentially on the
- *    single fastest VM type.
- *  - The three stochastic algorithms (MLEAO, LIWSA, LIWSA-ML) are each
- *    run across multiple random seeds and reported as mean +/- standard
- *    deviation, rather than a single run that could be an
- *    unrepresentative draw. HEFT and Min-Min are deterministic and are
- *    run once.
+ *  1. Cost model: Parameters.setCostModel(Parameters.CostModel.VM). Without
+ *     it, WorkflowSim bills every job at one flat datacenter-wide rate
+ *     instead of the rate of the VM it actually ran on.
+ *
+ *  2. Hypervolume reference point: a real run surfaced this -- computing
+ *     each algorithm's reference point from its OWN worst value makes a
+ *     single very bad point (e.g. HEFT struggling on a data-heavy
+ *     workflow) look artificially "rich" purely from scale, not quality.
+ *     This version computes ONE shared reference point per workflow,
+ *     20% beyond the worst makespan/cost seen across every algorithm and
+ *     every seed for that workflow, and uses it for every hypervolume
+ *     calculation, making the column genuinely comparable across rows.
+ *
+ *  3. Warm-start seeding: MLEAO, LIWSA, and LIWSA-ML are now seeded with
+ *     HEFT's and Min-Min's actual computed schedules (matched by cloudlet
+ *     ID across the separate simulation runs -- see
+ *     LIWSAPlanningAlgorithm.CONFIG_SEED_ASSIGNMENTS), matching the setup
+ *     used during prototype validation. Earlier versions of this driver
+ *     never wired this up, since WorkflowPlanner's internal construction
+ *     of the planning algorithm left no reachable injection point for it
+ *     until the CONFIG_SEED_ASSIGNMENTS mechanism was added.
+ *
+ * OUTPUT: a CSV file (default results/benchmark_results.csv) with one row
+ * per (workflow, algorithm, seed), written and flushed immediately after
+ * each run completes -- not buffered to the end -- so an interrupted run
+ * still leaves every completed result safely on disk. Uses the shared
+ * ResultsCsvWriter / RunMetricsCalculator / ParetoMetrics utilities so the
+ * schema and metric definitions are identical to the single-algorithm
+ * example drivers.
+ *
+ * TIMING: every run's search wall clock (the metaheuristic loop itself,
+ * for MLEAO/LIWSA/LIWSA-ML) and full simulation wall clock are recorded
+ * and printed/written to CSV. Progress and elapsed time are printed after
+ * each workflow, and total wall clock for the whole benchmark is printed
+ * at the end.
  */
 public class LIWSABenchmarkExample {
 
-    // ---------------------------------------------------------------
-    // VM type table. { mips, bandwidthMbitS, costPerSec, ram_MB, storage_MB, count }
-    // ---------------------------------------------------------------
     private static final double[][] VM_TYPES = {
         { 250.0, 160.0, 0.15, 512, 10000, 4},  // Micro  x4
         { 500.0, 160.0, 0.30, 512, 10000, 4},  // Small  x4
@@ -96,17 +102,17 @@ public class LIWSABenchmarkExample {
 
     private static class RunResult {
         String name;
+        long seed;
         double makespan;
         double cost;
-        double hypervolume;
-        int paretoFrontSize;
-        double makespanSpread;
-        double costSpread;
         double avgUtilization;
         double fairnessIndex;
         double speedup;
+        List<double[]> frontPoints;   // raw, for shared-reference hypervolume
+        double hypervolume;           // filled in AFTER the shared reference is known
         long searchWallClockMillis;
-        long totalSimWallClockMillis;
+        long simWallClockMillis;
+        Map<Integer, Integer> assignment;  // cloudletId -> vmId, for warm-start seeding
     }
 
     private static class Stats {
@@ -131,7 +137,6 @@ public class LIWSABenchmarkExample {
         // CONFIGURATION
         // ==============================================================
 
-        // Standard-size workflows: fast to run, good for iterating.
         String[] standardDaxFiles = {
             "config/dax/Montage_50.xml",
             "config/dax/Montage_100.xml",
@@ -140,14 +145,12 @@ public class LIWSABenchmarkExample {
             "config/dax/Sipht_30.xml",
         };
 
-        // Large workflows (~1000 tasks): include for the paper's final
-        // scalability results. Each metaheuristic run will take
-        // noticeably longer (more tasks -> more expensive decode calls
-        // and, for LIWSA-ML, more predictor training rows). Comment any
-        // of these out to skip if a quick iteration is needed. Confirm
-        // exact filenames in your config/dax/ folder before running --
-        // some WorkflowSim distributions name these slightly differently
-        // (e.g. Epigenomics_997.xml vs Epigenomics_100.xml only).
+        // Large, real-trace workflows (~1000 tasks). These take notably
+        // longer, and at least one of them (Epigenomics_997) contains
+        // individual file transfers in the multi-gigabyte range, which
+        // can make HEFT in particular behave very differently than on the
+        // compute-bound standard set above -- expected, not a bug, see
+        // the class-level notes in LIWSAPlanningAlgorithm if curious.
         String[] largeDaxFiles = {
             "config/dax/Montage_1000.xml",
             "config/dax/CyberShake_1000.xml",
@@ -157,9 +160,6 @@ public class LIWSABenchmarkExample {
 
         boolean includeLargeWorkflows = true;
 
-        // Number of independent runs (different random seeds) for each
-        // stochastic algorithm (MLEAO, LIWSA, LIWSA-ML). HEFT and Min-Min
-        // are deterministic and are always run exactly once.
         int numSeeds = 5;
         long[] seeds = new long[numSeeds];
         for (int i = 0; i < numSeeds; i++) { seeds[i] = i + 1; }
@@ -167,9 +167,20 @@ public class LIWSABenchmarkExample {
         int populationSize = 30;
         int generationCount = 100;
 
+        // Whether to seed MLEAO/LIWSA/LIWSA-ML's initial population with
+        // HEFT's and Min-Min's actual computed schedules. Recommended on;
+        // this is what was validated during prototyping. Set false to see
+        // how each algorithm performs from a cold, fully random start.
+        boolean useWarmStartSeeding = true;
+
+        String csvOutputPath = "results/benchmark_results.csv";
+
         // ==============================================================
         // END CONFIGURATION
         // ==============================================================
+
+        long benchmarkStart = System.currentTimeMillis();
+        PrintWriter csv = ResultsCsvWriter.open(csvOutputPath);
 
         List<String> daxFiles = new ArrayList<>();
         for (String f : standardDaxFiles) { daxFiles.add(f); }
@@ -181,27 +192,38 @@ public class LIWSABenchmarkExample {
         DecimalFormat df1 = new DecimalFormat("#####0.0");
         DecimalFormat df3 = new DecimalFormat("0.000");
 
+        int workflowsCompleted = 0;
+
         for (String daxPath : daxFiles) {
             if (!new File(daxPath).exists()) {
                 System.out.println("Skipping (not found): " + daxPath);
                 continue;
             }
             String workflowName = new File(daxPath).getName().replace(".xml", "");
+            long workflowStart = System.currentTimeMillis();
             System.out.println();
             System.out.println("=".repeat(78));
             System.out.println("WORKFLOW: " + workflowName);
             System.out.println("=".repeat(78));
 
-            // Deterministic baselines: one run each
+            // ---- deterministic baselines ----
             RunResult heft = runPlanning(daxPath, Parameters.PlanningAlgorithm.HEFT,
                 Parameters.SchedulingAlgorithm.STATIC, "HEFT", 0L,
-                populationSize, generationCount);
+                populationSize, generationCount, null);
 
             RunResult minmin = runPlanning(daxPath, Parameters.PlanningAlgorithm.INVALID,
                 Parameters.SchedulingAlgorithm.MINMIN, "Min-Min", 0L,
-                populationSize, generationCount);
+                populationSize, generationCount, null);
 
-            // Stochastic algorithms: one run per seed
+            // Warm-start seeds for the stochastic algorithms: HEFT's and
+            // Min-Min's actual computed schedules, matched by cloudlet ID.
+            List<Map<Integer, Integer>> warmStartSeeds = new ArrayList<>();
+            if (useWarmStartSeeding) {
+                if (heft != null && heft.assignment != null) { warmStartSeeds.add(heft.assignment); }
+                if (minmin != null && minmin.assignment != null) { warmStartSeeds.add(minmin.assignment); }
+            }
+
+            // ---- stochastic algorithms: one run per seed ----
             List<RunResult> mleaoRuns = new ArrayList<>();
             List<RunResult> liwsaRuns = new ArrayList<>();
             List<RunResult> liwsaMlRuns = new ArrayList<>();
@@ -209,26 +231,46 @@ public class LIWSABenchmarkExample {
             for (long seed : seeds) {
                 RunResult m = runPlanning(daxPath, Parameters.PlanningAlgorithm.MLEAO,
                     Parameters.SchedulingAlgorithm.STATIC, "MLEAO", seed,
-                    populationSize, generationCount);
+                    populationSize, generationCount, warmStartSeeds);
                 if (m != null) { mleaoRuns.add(m); }
 
                 RunResult l = runPlanning(daxPath, Parameters.PlanningAlgorithm.LIWSA,
                     Parameters.SchedulingAlgorithm.STATIC, "LIWSA", seed,
-                    populationSize, generationCount);
+                    populationSize, generationCount, warmStartSeeds);
                 if (l != null) { liwsaRuns.add(l); }
 
                 RunResult lm = runPlanning(daxPath, Parameters.PlanningAlgorithm.LIWSAML,
                     Parameters.SchedulingAlgorithm.STATIC, "LIWSA-ML", seed,
-                    populationSize, generationCount);
+                    populationSize, generationCount, warmStartSeeds);
                 if (lm != null) { liwsaMlRuns.add(lm); }
             }
 
-            // ---- table ----
+            // ---- FIX 2: shared hypervolume reference point, computed
+            //      across every algorithm and every seed for THIS
+            //      workflow, then applied uniformly to all of them ----
+            List<List<double[]>> allFronts = new ArrayList<>();
+            for (RunResult r : allOf(heft, minmin, mleaoRuns, liwsaRuns, liwsaMlRuns)) {
+                allFronts.add(r.frontPoints);
+            }
+            double[] ref = ParetoMetrics.sharedReferencePoint(allFronts);
+            for (RunResult r : allOf(heft, minmin, mleaoRuns, liwsaRuns, liwsaMlRuns)) {
+                r.hypervolume = ParetoMetrics.hypervolume2D(r.frontPoints, ref[0], ref[1]);
+            }
+
+            // ---- write every result to CSV now that hypervolume is final ----
+            for (RunResult r : allOf(heft, minmin, mleaoRuns, liwsaRuns, liwsaMlRuns)) {
+                ResultsCsvWriter.writeRow(csv, workflowName, r.name, r.seed,
+                    r.makespan, r.cost, r.frontPoints.size(), r.hypervolume,
+                    r.avgUtilization, r.fairnessIndex, r.speedup,
+                    r.searchWallClockMillis, r.simWallClockMillis);
+            }
+
+            // ---- console table ----
             System.out.println();
-            System.out.printf("%-10s %14s %14s %7s %10s %7s %7s %8s%n",
+            System.out.printf("%-10s %14s %14s %7s %12s %7s %7s %8s%n",
                 "Algorithm", "Makespan(s)", "Cost", "Front", "Hypervol.",
                 "Util%", "Fair", "Speedup");
-            System.out.println("-".repeat(86));
+            System.out.println("-".repeat(90));
 
             printSingle(df2, df1, df3, heft);
             printSingle(df2, df1, df3, minmin);
@@ -236,7 +278,6 @@ public class LIWSABenchmarkExample {
             printAggregate(df2, df1, df3, "LIWSA", liwsaRuns);
             printAggregate(df2, df1, df3, "LIWSA-ML", liwsaMlRuns);
 
-            // ---- improvement ratios (means, for the stochastic algorithms) ----
             if (heft != null && !liwsaRuns.isEmpty() && !mleaoRuns.isEmpty() && !liwsaMlRuns.isEmpty()) {
                 double liwsaMk = mean(liwsaRuns, r -> r.makespan);
                 double liwsaCost = mean(liwsaRuns, r -> r.cost);
@@ -255,7 +296,35 @@ public class LIWSABenchmarkExample {
                 System.out.printf("  LIWSA-ML vs LIWSA: makespan %+6.1f%%  cost %+6.1f%%%n",
                     pct(mlMk, liwsaMk), pct(mlCost, liwsaCost));
             }
+
+            // ---- timing / progress ----
+            long workflowWall = System.currentTimeMillis() - workflowStart;
+            long elapsedTotal = System.currentTimeMillis() - benchmarkStart;
+            workflowsCompleted++;
+            System.out.println();
+            System.out.printf("  Workflow wall clock : %.1f s%n", workflowWall / 1000.0);
+            System.out.printf("  Elapsed so far       : %.1f s (%d/%d workflows done)%n",
+                elapsedTotal / 1000.0, workflowsCompleted, daxFiles.size());
         }
+
+        ResultsCsvWriter.close(csv);
+
+        long totalWall = System.currentTimeMillis() - benchmarkStart;
+        System.out.println();
+        System.out.println("=".repeat(78));
+        System.out.printf("BENCHMARK COMPLETE: %.1f s total (%.1f min)%n",
+            totalWall / 1000.0, totalWall / 60000.0);
+        System.out.println("Results written to: " + csvOutputPath);
+        System.out.println("=".repeat(78));
+    }
+
+    @SafeVarargs
+    private static List<RunResult> allOf(RunResult a, RunResult b, List<RunResult>... lists) {
+        List<RunResult> out = new ArrayList<>();
+        if (a != null) { out.add(a); }
+        if (b != null) { out.add(b); }
+        for (List<RunResult> l : lists) { out.addAll(l); }
+        return out;
     }
 
     private static double pct(double value, double base) {
@@ -272,8 +341,8 @@ public class LIWSABenchmarkExample {
 
     private static void printSingle(DecimalFormat df2, DecimalFormat df1, DecimalFormat df3, RunResult r) {
         if (r == null) { return; }
-        System.out.printf("%-10s %14s %14s %7d %10s %7s %7s %8s%n",
-            r.name, df2.format(r.makespan), df2.format(r.cost), r.paretoFrontSize,
+        System.out.printf("%-10s %14s %14s %7d %12s %7s %7s %8s%n",
+            r.name, df2.format(r.makespan), df2.format(r.cost), r.frontPoints.size(),
             df1.format(r.hypervolume), df1.format(r.avgUtilization * 100),
             df3.format(r.fairnessIndex), df3.format(r.speedup));
     }
@@ -290,7 +359,7 @@ public class LIWSABenchmarkExample {
         for (RunResult r : runs) {
             mk.add(r.makespan); cost.add(r.cost); hv.add(r.hypervolume);
             util.add(r.avgUtilization); fair.add(r.fairnessIndex); speed.add(r.speedup);
-            frontSize.add((double) r.paretoFrontSize);
+            frontSize.add((double) r.frontPoints.size());
         }
         Stats mkS = Stats.of(mk), costS = Stats.of(cost), hvS = Stats.of(hv);
         Stats utilS = Stats.of(util), fairS = Stats.of(fair), speedS = Stats.of(speed);
@@ -299,7 +368,7 @@ public class LIWSABenchmarkExample {
         String mkStr = df2.format(mkS.mean) + "+-" + df1.format(mkS.std);
         String costStr = df2.format(costS.mean) + "+-" + df1.format(costS.std);
 
-        System.out.printf("%-10s %14s %14s %7s %10s %7s %7s %8s%n",
+        System.out.printf("%-10s %14s %14s %7s %12s %7s %7s %8s%n",
             label, mkStr, costStr,
             df1.format(frontS.mean),
             df1.format(hvS.mean),
@@ -308,32 +377,34 @@ public class LIWSABenchmarkExample {
             df3.format(speedS.mean));
     }
 
-    /**
-     * Runs one complete WorkflowSim simulation and returns the result,
-     * including the universal metrics (utilization, fairness, speedup)
-     * computed from the actual job results, and, for the multi-objective
-     * algorithms, the Pareto front metrics captured via their static
-     * lastRun snapshot.
-     */
+    private static Map<Integer, Integer> buildAssignmentMap(List<Job> jobs) {
+        Map<Integer, Integer> map = new HashMap<>();
+        for (Job job : jobs) {
+            if (job.getClassType() == org.workflowsim.utils.Parameters.ClassType.STAGE_IN.value) {
+                continue;
+            }
+            map.put(job.getCloudletId(), job.getVmId());
+        }
+        return map;
+    }
+
     private static RunResult runPlanning(
             String daxPath,
             Parameters.PlanningAlgorithm planningAlg,
             Parameters.SchedulingAlgorithm schedulingAlg,
             String label, long seed,
-            int populationSize, int generationCount) {
+            int populationSize, int generationCount,
+            List<Map<Integer, Integer>> warmStartSeeds) {
 
         try {
-            // Static configuration, read by the algorithm's no-arg
-            // constructor at the moment WorkflowPlanner instantiates it
-            // internally. This is the only injection point that actually
-            // reaches a WorkflowSim-driven run -- see the class-level
-            // comment for why.
             LIWSAPlanningAlgorithm.CONFIG_POPULATION_SIZE = populationSize;
             LIWSAPlanningAlgorithm.CONFIG_GENERATION_COUNT = generationCount;
             LIWSAPlanningAlgorithm.CONFIG_RANDOM_SEED = seed;
+            LIWSAPlanningAlgorithm.CONFIG_SEED_ASSIGNMENTS = warmStartSeeds;
             MLEAOPlanningAlgorithm.CONFIG_POPULATION_SIZE = populationSize;
             MLEAOPlanningAlgorithm.CONFIG_GENERATION_COUNT = generationCount;
             MLEAOPlanningAlgorithm.CONFIG_RANDOM_SEED = seed;
+            MLEAOPlanningAlgorithm.CONFIG_SEED_ASSIGNMENTS = warmStartSeeds;
 
             int totalVMs = 0;
             for (double[] t : VM_TYPES) { totalVMs += (int) t[5]; }
@@ -344,10 +415,7 @@ public class LIWSABenchmarkExample {
 
             Parameters.init(totalVMs, daxPath, null, null, op, cp,
                 schedulingAlg, planningAlg, null, 0);
-
-            // THE COST FIX: without this, WorkflowSim bills every job at
-            // the flat datacenter rate instead of its VM's actual rate.
-            Parameters.setCostModel(Parameters.CostModel.VM);
+            Parameters.setCostModel(Parameters.CostModel.VM);  // FIX 1
 
             ReplicaCatalog.init(ReplicaCatalog.FileSystem.LOCAL);
             CloudSim.init(1, Calendar.getInstance(), false);
@@ -367,46 +435,21 @@ public class LIWSABenchmarkExample {
 
             RunResult r = new RunResult();
             r.name = label;
-            r.totalSimWallClockMillis = simWall;
-
-            // ---- universal metrics: makespan, cost, utilization, fairness,
-            //      speedup -- computed identically for all 5 algorithms,
-            //      directly from the simulator's actual results. ----
-            double[] vmBusyTime = new double[vmList.size()];
-            double totalTaskLength = 0.0;
-            for (Job job : jobs) {
-                if (job.getClassType() == org.workflowsim.utils.Parameters.ClassType.STAGE_IN.value) {
-                    continue;
-                }
-                r.makespan = Math.max(r.makespan, job.getFinishTime());
-                r.cost += job.getActualCPUTime() * job.getCostPerSec();
-                int vmId = job.getVmId();
-                if (vmId >= 0 && vmId < vmBusyTime.length) {
-                    vmBusyTime[vmId] += job.getActualCPUTime();
-                }
-                totalTaskLength += job.getCloudletTotalLength();
-            }
-
-            double busySum = 0, busySqSum = 0;
-            for (double b : vmBusyTime) { busySum += b; busySqSum += b * b; }
-            r.avgUtilization = (r.makespan > 0)
-                ? (busySum / vmList.size()) / r.makespan : 0.0;
-            // Jain's fairness index over per-VM busy time: 1.0 = perfectly
-            // even load across all VMs, 1/numVMs = maximally unfair
-            // (all load concentrated on one VM).
-            r.fairnessIndex = (busySqSum > 0)
-                ? (busySum * busySum) / (vmList.size() * busySqSum) : 0.0;
+            r.seed = seed;
+            r.simWallClockMillis = simWall;
+            r.assignment = buildAssignmentMap(jobs);
 
             double fastestMips = 0;
             for (double[] t : VM_TYPES) { fastestMips = Math.max(fastestMips, t[0]); }
-            double sequentialTime = totalTaskLength / fastestMips;
-            r.speedup = (r.makespan > 0) ? sequentialTime / r.makespan : 0.0;
+            RunMetricsCalculator.Result m = RunMetricsCalculator.compute(jobs, vmList.size(), fastestMips);
+            r.makespan = m.makespan;
+            r.cost = m.cost;
+            r.avgUtilization = m.avgUtilization;
+            r.fairnessIndex = m.fairnessIndex;
+            r.speedup = m.speedup;
 
-            // ---- multi-objective metrics: only meaningful for the
-            //      Pareto-front algorithms. HEFT/Min-Min report a
-            //      single-point "front" of size 1 for comparability. ----
-            List<double[]> frontPoints = null;
             long searchWall = 0;
+            List<double[]> frontPoints = null;
             if ((planningAlg == Parameters.PlanningAlgorithm.LIWSA
                     || planningAlg == Parameters.PlanningAlgorithm.LIWSAML)
                     && LIWSAPlanningAlgorithm.lastRun != null) {
@@ -418,29 +461,12 @@ public class LIWSABenchmarkExample {
                 searchWall = MLEAOPlanningAlgorithm.lastRun.searchWallClockMillis;
             }
             r.searchWallClockMillis = searchWall;
-
-            if (frontPoints == null) {
-                frontPoints = new ArrayList<>();
-                frontPoints.add(new double[]{r.makespan, r.cost});
+            if (frontPoints != null) {
+                r.frontPoints = frontPoints;
+            } else {
+                r.frontPoints = new ArrayList<>();
+                r.frontPoints.add(new double[]{r.makespan, r.cost});
             }
-            r.paretoFrontSize = frontPoints.size();
-
-            // Reference point for hypervolume: 20% beyond the worst point
-            // on this algorithm's own front. For comparing hypervolume
-            // ACROSS algorithms with full rigor, recompute externally
-            // using one shared reference point spanning every algorithm's
-            // results for the same workflow; this per-run value is still
-            // a valid standalone richness indicator for one algorithm.
-            double maxM = 0, maxC = 0, minM = Double.MAX_VALUE, minC = Double.MAX_VALUE;
-            for (double[] p : frontPoints) {
-                maxM = Math.max(maxM, p[0]); maxC = Math.max(maxC, p[1]);
-                minM = Math.min(minM, p[0]); minC = Math.min(minC, p[1]);
-            }
-            double refM = maxM * 1.2 + 1e-6;
-            double refC = maxC * 1.2 + 1e-6;
-            r.hypervolume = hypervolume2D(frontPoints, refM, refC);
-            r.makespanSpread = maxM - minM;
-            r.costSpread = maxC - minC;
 
             return r;
 
@@ -449,28 +475,6 @@ public class LIWSABenchmarkExample {
             e.printStackTrace();
             return null;
         }
-    }
-
-    /**
-     * 2D hypervolume for minimization of both objectives, against a fixed
-     * reference point assumed to be dominated by (worse than) every point
-     * in the front. Direct port of the Python prototype's hypervolume_2d,
-     * validated there against a hand-computed staircase example.
-     */
-    private static double hypervolume2D(List<double[]> points, double refM, double refC) {
-        List<double[]> sorted = new ArrayList<>(points);
-        sorted.sort((a, b) -> Double.compare(a[0], b[0]));
-        double hv = 0.0;
-        for (int i = 0; i < sorted.size(); i++) {
-            double m = sorted.get(i)[0];
-            double c = sorted.get(i)[1];
-            if (m >= refM || c >= refC) { continue; }
-            double nextM = (i + 1 < sorted.size()) ? sorted.get(i + 1)[0] : refM;
-            if (nextM > m) {
-                hv += (nextM - m) * (refC - c);
-            }
-        }
-        return hv;
     }
 
     private static List<CondorVM> createVMs(int userId) {

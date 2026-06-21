@@ -114,6 +114,31 @@ public class LIWSAPlanningAlgorithm extends BasePlanningAlgorithm {
         public int generationCountUsed;
     }
 
+    /**
+     * Optional warm-start schedules to seed the initial population with,
+     * e.g. HEFT's and Min-Min's actual assignments. Keyed by CLOUDLET ID
+     * (Task.getCloudletId()) rather than array position, because each
+     * schedule is typically produced by a SEPARATE simulation run (its own
+     * WorkflowPlanner, its own freshly-constructed planning algorithm
+     * instance with its own internal task ordering) -- cloudlet IDs are
+     * the one thing guaranteed to line up across separate runs on the
+     * same DAX file, since WorkflowParser assigns them deterministically,
+     * in document order, starting fresh from a per-instance counter every
+     * time the file is parsed.
+     *
+     * Each entry in the outer list is one complete schedule: a map from
+     * cloudlet ID to the VM ID (CondorVM.getId(), not a list index) that
+     * task was assigned to. Set this from the benchmark driver right
+     * before CloudSim.startSimulation(), after computing the schedule(s)
+     * you want to seed with in a prior simulation run.
+     *
+     * If a seed schedule is missing an entry for some task in the current
+     * workflow, or maps a task to a VM ID not present in the current VM
+     * pool, that whole seed is skipped (logged, not silently dropped) and
+     * search proceeds with whatever seeds remain plus random fill-in.
+     */
+    public static List<Map<Integer, Integer>> CONFIG_SEED_ASSIGNMENTS = null;
+
     // ---- problem data, set once at the start of run() ----
     protected List<Task> taskOrder;
     protected List<CondorVM> vmList;
@@ -490,13 +515,59 @@ public class LIWSAPlanningAlgorithm extends BasePlanningAlgorithm {
     /**
      * Hook for subclasses: return any warm-start genotypes to seed the
      * initial population with before filling the rest randomly.
-     * Default returns the seedGenotypes set via setSeedGenotypes(),
-     * or an empty list if none were provided.
-     * LIWSAMLPlanningAlgorithm overrides this to train a predictor and
-     * return ML-biased starting points instead.
+     * Returns, in order: any genotypes set via setSeedGenotypes() (array-
+     * position based, for direct/manual use outside WorkflowSim), then
+     * any schedules in CONFIG_SEED_ASSIGNMENTS translated into genotypes
+     * via cloudlet-ID lookup (the path used when run through WorkflowSim,
+     * e.g. to warm-start from HEFT's/Min-Min's actual schedules).
+     * LIWSAMLPlanningAlgorithm further appends ML-biased starting points
+     * on top of whatever this returns.
      */
     protected List<int[]> generateSeedGenotypes() {
-        return (seedGenotypes != null) ? new ArrayList<>(seedGenotypes) : new ArrayList<>();
+        List<int[]> seeds = (seedGenotypes != null) ? new ArrayList<>(seedGenotypes) : new ArrayList<>();
+        seeds.addAll(buildSeedsFromAssignments());
+        return seeds;
+    }
+
+    /**
+     * Converts each schedule in CONFIG_SEED_ASSIGNMENTS (cloudlet ID -> VM
+     * ID) into a genotype matching this instance's own taskOrder and
+     * vmList. A schedule is skipped entirely, with a log line, if any
+     * task in the current workflow has no entry in it, or if it maps a
+     * task to a VM ID not present in the current VM pool -- both would
+     * indicate the seed was computed for a different workflow or VM
+     * configuration than the one currently running.
+     */
+    private List<int[]> buildSeedsFromAssignments() {
+        List<int[]> result = new ArrayList<>();
+        if (CONFIG_SEED_ASSIGNMENTS == null || CONFIG_SEED_ASSIGNMENTS.isEmpty()) {
+            return result;
+        }
+        Map<Integer, Integer> vmIdToIndex = new HashMap<>();
+        for (int idx = 0; idx < vmList.size(); idx++) {
+            vmIdToIndex.put(vmList.get(idx).getId(), idx);
+        }
+
+        for (Map<Integer, Integer> assignment : CONFIG_SEED_ASSIGNMENTS) {
+            int[] genotype = new int[taskOrder.size()];
+            boolean valid = true;
+            for (int k = 0; k < taskOrder.size(); k++) {
+                int cloudletId = taskOrder.get(k).getCloudletId();
+                Integer vmId = assignment.get(cloudletId);
+                if (vmId == null || !vmIdToIndex.containsKey(vmId)) {
+                    valid = false;
+                    break;
+                }
+                genotype[k] = vmIdToIndex.get(vmId);
+            }
+            if (valid) {
+                result.add(genotype);
+            } else {
+                Log.printLine("LIWSA: skipped a seed schedule that did not match "
+                    + "the current workflow/VM pool (incomplete cloudlet-ID mapping).");
+            }
+        }
+        return result;
     }
 
     protected void initializePopulation() {

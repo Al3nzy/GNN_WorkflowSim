@@ -87,6 +87,16 @@ public class MLEAOPlanningAlgorithm extends BasePlanningAlgorithm {
      */
     public static volatile LastRunMetrics lastRun = null;
 
+    /**
+     * Optional warm-start schedules (e.g. HEFT's/Min-Min's actual
+     * assignments), keyed by cloudlet ID. See the identical, more
+     * detailed comment on LIWSAPlanningAlgorithm.CONFIG_SEED_ASSIGNMENTS
+     * for the full rationale -- cloudlet-ID keying is what lets a
+     * schedule computed in one simulation run be reused as a warm start
+     * in a separate, later simulation run on the same DAX file.
+     */
+    public static List<Map<Integer, Integer>> CONFIG_SEED_ASSIGNMENTS = null;
+
     public static class LastRunMetrics {
         public double chosenMakespan;
         public double chosenCost;
@@ -537,12 +547,52 @@ public class MLEAOPlanningAlgorithm extends BasePlanningAlgorithm {
         }
     }
 
+    /**
+     * Converts each schedule in CONFIG_SEED_ASSIGNMENTS (cloudlet ID -> VM
+     * ID) into a genotype matching this instance's own taskOrder and
+     * vmList. See LIWSAPlanningAlgorithm.buildSeedsFromAssignments for
+     * the identical logic and rationale.
+     */
+    private List<int[]> buildSeedsFromAssignments() {
+        List<int[]> result = new ArrayList<>();
+        if (CONFIG_SEED_ASSIGNMENTS == null || CONFIG_SEED_ASSIGNMENTS.isEmpty()) {
+            return result;
+        }
+        Map<Integer, Integer> vmIdToIndex = new HashMap<>();
+        for (int idx = 0; idx < vmList.size(); idx++) {
+            vmIdToIndex.put(vmList.get(idx).getId(), idx);
+        }
+        for (Map<Integer, Integer> assignment : CONFIG_SEED_ASSIGNMENTS) {
+            int[] genotype = new int[taskOrder.size()];
+            boolean valid = true;
+            for (int k = 0; k < taskOrder.size(); k++) {
+                int cloudletId = taskOrder.get(k).getCloudletId();
+                Integer vmId = assignment.get(cloudletId);
+                if (vmId == null || !vmIdToIndex.containsKey(vmId)) {
+                    valid = false;
+                    break;
+                }
+                genotype[k] = vmIdToIndex.get(vmId);
+            }
+            if (valid) {
+                result.add(genotype);
+            } else {
+                Log.printLine("MLEAO: skipped a seed schedule that did not match "
+                    + "the current workflow/VM pool (incomplete cloudlet-ID mapping).");
+            }
+        }
+        return result;
+    }
+
     private void initializePopulation() {
         population = new ArrayList<>();
         if (seedGenotypes != null) {
             for (int[] g : seedGenotypes) {
                 population.add(g.clone());
             }
+        }
+        for (int[] g : buildSeedsFromAssignments()) {
+            population.add(g);
         }
         int n = taskOrder.size();
         while (population.size() < populationSize) {

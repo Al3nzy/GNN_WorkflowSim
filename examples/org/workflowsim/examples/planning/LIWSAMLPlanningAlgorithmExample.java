@@ -46,8 +46,12 @@ import org.workflowsim.utils.Parameters;
 import org.workflowsim.utils.ReplicaCatalog;
 
 /**
- * Standalone example for LIWSAPlanningAlgorithm (Density-Adaptive
- * Multi-Objective Locust-Inspired Workflow Scheduling Algorithm).
+ * Standalone example for LIWSAMLPlanningAlgorithm: LIWSA extended with a
+ * pure-Java OLS regression warm-start predictor that biases the initial
+ * population toward historically-better task-VM pairings before search
+ * begins. No external ML libraries required. See the predictor settings
+ * in the CONFIGURATION block below (numTrainingSamples, numPredictorSeeds,
+ * predTemperature) to tune it.
  *
  * Structure mirrors HEFTPlanningAlgorithmExample1 exactly so it drops
  * into the same examples/planning/ package and runs the same way.
@@ -56,12 +60,14 @@ import org.workflowsim.utils.ReplicaCatalog;
  * top of main(). Edit that block; nothing else needs to change.
  *
  * Prerequisites:
- *   1. Add LIWSA to the PlanningAlgorithm enum in Parameters.java
- *   2. Add a LIWSA case to WorkflowPlanner.getPlanningAlgorithm()
- *   3. Place LIWSAPlanningAlgorithm.java in sources/org/workflowsim/planning/
+ *   1. Add LIWSAML to the PlanningAlgorithm enum in Parameters.java
+ *   2. Add a LIWSAML case to WorkflowPlanner.getPlanningAlgorithm()
+ *   3. Place LIWSAPlanningAlgorithm.java and LIWSAMLPlanningAlgorithm.java
+ *      in sources/org/workflowsim/planning/ (LIWSA-ML extends LIWSA, so
+ *      both classes are required)
  *   (See SOURCE_PATCHES.txt for the exact lines to change.)
  */
-public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
+public class LIWSAMLPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
 
     // ---------------------------------------------------------------
     // VM type definitions used by createHeterogeneousVMs().
@@ -178,19 +184,38 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
             //   LIGO_50.xml  LIGO_100.xml  (etc.)
             String daxPath = "config/dax/Montage_100.xml";
 
-            // LIWSA algorithm parameters (passed via LIWSAPlanningAlgorithm setters).
+            // LIWSA-ML algorithm parameters (passed via static CONFIG_*
+            // fields on LIWSAMLPlanningAlgorithm -- it extends
+            // LIWSAPlanningAlgorithm and inherits its population/generation/
+            // seed configuration, then adds its own predictor settings below).
             // populationSize: number of candidate schedules maintained in the swarm.
             //   Larger -> better solutions, slower per generation.
             // generationCount: number of evolution iterations.
             //   100 generations is a reasonable starting point; increase to 200-500
             //   for larger workflows or if results show the front still changing late.
-            // randomSeed: fix for reproducible results; set to -1 for random.
+            // randomSeed: fix for reproducible results.
             int populationSize = 30;
             int generationCount = 100;
             long randomSeed = 7L;
 
+            // numTrainingSamples: how many random genotypes are decoded to
+            //   build the predictor's training set. Larger -> better-fit
+            //   model, slower setup. 400 is a reasonable default; for very
+            //   large workflows (Montage_1000 and similar) this scales as
+            //   numTrainingSamples * taskCount training rows, so consider
+            //   reducing it if setup time becomes a bottleneck.
+            // numPredictorSeeds: how many ML-biased starting genotypes are
+            //   injected into the initial population, each targeting a
+            //   different point on the makespan/cost trade-off.
+            // predTemperature: softmax sampling temperature for the biased
+            //   seeds. Lower = more greedy/deterministic, higher = more
+            //   exploratory. 0.5 is a reasonable default.
+            int numTrainingSamples = 400;
+            int numPredictorSeeds = 4;
+            double predTemperature = 0.5;
+
             // Path for the CSV results file. One row is written for this run.
-            String csvOutputPath = "results/LIWSA_results.csv";
+            String csvOutputPath = "results/LIWSA-ML_results.csv";
 
             // ==============================================================
             // END CONFIGURATION
@@ -210,7 +235,7 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
             for (double[] t : VM_TYPES) { totalVMs += (int) t[5]; }
 
             Parameters.SchedulingAlgorithm sch_method = Parameters.SchedulingAlgorithm.STATIC;
-            Parameters.PlanningAlgorithm pln_method = Parameters.PlanningAlgorithm.LIWSA;
+            Parameters.PlanningAlgorithm pln_method = Parameters.PlanningAlgorithm.LIWSAML;
             ReplicaCatalog.FileSystem file_system = ReplicaCatalog.FileSystem.LOCAL;
 
             OverheadParameters op = new OverheadParameters(0, null, null, null, null, 0);
@@ -219,16 +244,19 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
             );
 
             // Parameter injection: WorkflowPlanner constructs the planning
-            // algorithm internally with `new LIWSAPlanningAlgorithm()` as a
+            // algorithm internally with `new LIWSAMLPlanningAlgorithm()` as a
             // local variable inside processPlanning(), triggered only once
             // CloudSim.startSimulation() begins processing events -- there
             // is no point in that flow where external code can reach the
             // real instance before run() executes. Static fields, read by
             // the no-arg constructor at construction time, are the only
             // injection point that actually works here.
-            org.workflowsim.planning.LIWSAPlanningAlgorithm.CONFIG_POPULATION_SIZE = populationSize;
-            org.workflowsim.planning.LIWSAPlanningAlgorithm.CONFIG_GENERATION_COUNT = generationCount;
-            org.workflowsim.planning.LIWSAPlanningAlgorithm.CONFIG_RANDOM_SEED = randomSeed;
+            org.workflowsim.planning.LIWSAMLPlanningAlgorithm.CONFIG_POPULATION_SIZE = populationSize;
+            org.workflowsim.planning.LIWSAMLPlanningAlgorithm.CONFIG_GENERATION_COUNT = generationCount;
+            org.workflowsim.planning.LIWSAMLPlanningAlgorithm.CONFIG_RANDOM_SEED = randomSeed;
+            org.workflowsim.planning.LIWSAMLPlanningAlgorithm.CONFIG_NUM_TRAINING_SAMPLES = numTrainingSamples;
+            org.workflowsim.planning.LIWSAMLPlanningAlgorithm.CONFIG_NUM_PREDICTOR_SEEDS = numPredictorSeeds;
+            org.workflowsim.planning.LIWSAMLPlanningAlgorithm.CONFIG_PRED_TEMPERATURE = predTemperature;
 
             Parameters.init(totalVMs, daxPath, null, null, op, cp, sch_method, pln_method, null, 0);
 
@@ -269,9 +297,9 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
             long searchWallClockMillis = 0;
             int paretoFrontSize = 1;
             double hypervolume = 0.0;
-            if (org.workflowsim.planning.LIWSAPlanningAlgorithm.lastRun != null) {
-                org.workflowsim.planning.LIWSAPlanningAlgorithm.LastRunMetrics m =
-                    org.workflowsim.planning.LIWSAPlanningAlgorithm.lastRun;
+            if (org.workflowsim.planning.LIWSAMLPlanningAlgorithm.lastRun != null) {
+                org.workflowsim.planning.LIWSAMLPlanningAlgorithm.LastRunMetrics m =
+                    org.workflowsim.planning.LIWSAMLPlanningAlgorithm.lastRun;
                 searchWallClockMillis = m.searchWallClockMillis;
                 paretoFrontSize = m.paretoFrontSize;
                 double[] ref = ParetoMetrics.sharedReferencePoint(
@@ -279,7 +307,7 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
                 hypervolume = ParetoMetrics.hypervolume2D(m.paretoFrontPoints, ref[0], ref[1]);
 
                 Log.printLine("");
-                Log.printLine("=== LIWSA SEARCH SUMMARY ===");
+                Log.printLine("=== LIWSA-ML SEARCH SUMMARY ===");
                 Log.printLine(String.format("  Pareto front size : %d", m.paretoFrontSize));
                 Log.printLine(String.format("  Planned makespan  : %.2f s", m.chosenMakespan));
                 Log.printLine(String.format("  Planned cost      : %.4f", m.chosenCost));
@@ -293,7 +321,7 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
             printSummary(metrics, paretoFrontSize, hypervolume, searchWallClockMillis, simWallClockMillis);
 
             PrintWriter csv = ResultsCsvWriter.open(csvOutputPath);
-            ResultsCsvWriter.writeRow(csv, daxFile.getName().replace(".xml", ""), "LIWSA",
+            ResultsCsvWriter.writeRow(csv, daxFile.getName().replace(".xml", ""), "LIWSA-ML",
                 randomSeed,
                 metrics.makespan, metrics.cost, paretoFrontSize, hypervolume,
                 metrics.avgUtilization, metrics.fairnessIndex, metrics.speedup,

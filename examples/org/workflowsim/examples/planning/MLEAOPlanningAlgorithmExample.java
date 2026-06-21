@@ -46,8 +46,8 @@ import org.workflowsim.utils.Parameters;
 import org.workflowsim.utils.ReplicaCatalog;
 
 /**
- * Standalone example for LIWSAPlanningAlgorithm (Density-Adaptive
- * Multi-Objective Locust-Inspired Workflow Scheduling Algorithm).
+ * Standalone example for MLEAOPlanningAlgorithm: a multi-objective,
+ * HEFT-seeded Archimedes Optimization Algorithm with a Local Escaping
  *
  * Structure mirrors HEFTPlanningAlgorithmExample1 exactly so it drops
  * into the same examples/planning/ package and runs the same way.
@@ -56,12 +56,12 @@ import org.workflowsim.utils.ReplicaCatalog;
  * top of main(). Edit that block; nothing else needs to change.
  *
  * Prerequisites:
- *   1. Add LIWSA to the PlanningAlgorithm enum in Parameters.java
- *   2. Add a LIWSA case to WorkflowPlanner.getPlanningAlgorithm()
- *   3. Place LIWSAPlanningAlgorithm.java in sources/org/workflowsim/planning/
+ *   1. Add MLEAO to the PlanningAlgorithm enum in Parameters.java
+ *   2. Add a MLEAO case to WorkflowPlanner.getPlanningAlgorithm()
+ *   3. Place MLEAOPlanningAlgorithm.java in sources/org/workflowsim/planning/
  *   (See SOURCE_PATCHES.txt for the exact lines to change.)
  */
-public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
+public class MLEAOPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
 
     // ---------------------------------------------------------------
     // VM type definitions used by createHeterogeneousVMs().
@@ -79,7 +79,7 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
 
     /**
      * Creates the heterogeneous VM pool from VM_TYPES, setting per-second
-     * CPU cost explicitly so that LIWSAPlanningAlgorithm.getCost() returns
+     * CPU cost explicitly so that MLEAOPlanningAlgorithm.getCost() returns
      * the correct value during Pareto fitness evaluation.
      */
     protected static List<CondorVM> createHeterogeneousVMs(int userId) {
@@ -143,7 +143,7 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
         DatacenterCharacteristics dc = new DatacenterCharacteristics(
             "x86", "Linux", "Xen", hostList,
             10.0,   // timezone
-            3.0,    // cost per PE (not used by LIWSA, but required by WorkflowSim)
+            3.0,    // cost per PE (not used by MLEAO, but required by WorkflowSim)
             0.05,   // costPerMem
             0.1,    // costPerStorage
             0.1     // costPerBW
@@ -178,7 +178,7 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
             //   LIGO_50.xml  LIGO_100.xml  (etc.)
             String daxPath = "config/dax/Montage_100.xml";
 
-            // LIWSA algorithm parameters (passed via LIWSAPlanningAlgorithm setters).
+            // MLEAO algorithm parameters (passed via static CONFIG_* fields).
             // populationSize: number of candidate schedules maintained in the swarm.
             //   Larger -> better solutions, slower per generation.
             // generationCount: number of evolution iterations.
@@ -190,7 +190,7 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
             long randomSeed = 7L;
 
             // Path for the CSV results file. One row is written for this run.
-            String csvOutputPath = "results/LIWSA_results.csv";
+            String csvOutputPath = "results/MLEAO_results.csv";
 
             // ==============================================================
             // END CONFIGURATION
@@ -210,7 +210,7 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
             for (double[] t : VM_TYPES) { totalVMs += (int) t[5]; }
 
             Parameters.SchedulingAlgorithm sch_method = Parameters.SchedulingAlgorithm.STATIC;
-            Parameters.PlanningAlgorithm pln_method = Parameters.PlanningAlgorithm.LIWSA;
+            Parameters.PlanningAlgorithm pln_method = Parameters.PlanningAlgorithm.MLEAO;
             ReplicaCatalog.FileSystem file_system = ReplicaCatalog.FileSystem.LOCAL;
 
             OverheadParameters op = new OverheadParameters(0, null, null, null, null, 0);
@@ -219,16 +219,16 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
             );
 
             // Parameter injection: WorkflowPlanner constructs the planning
-            // algorithm internally with `new LIWSAPlanningAlgorithm()` as a
+            // algorithm internally with `new MLEAOPlanningAlgorithm()` as a
             // local variable inside processPlanning(), triggered only once
             // CloudSim.startSimulation() begins processing events -- there
             // is no point in that flow where external code can reach the
             // real instance before run() executes. Static fields, read by
             // the no-arg constructor at construction time, are the only
             // injection point that actually works here.
-            org.workflowsim.planning.LIWSAPlanningAlgorithm.CONFIG_POPULATION_SIZE = populationSize;
-            org.workflowsim.planning.LIWSAPlanningAlgorithm.CONFIG_GENERATION_COUNT = generationCount;
-            org.workflowsim.planning.LIWSAPlanningAlgorithm.CONFIG_RANDOM_SEED = randomSeed;
+            org.workflowsim.planning.MLEAOPlanningAlgorithm.CONFIG_POPULATION_SIZE = populationSize;
+            org.workflowsim.planning.MLEAOPlanningAlgorithm.CONFIG_GENERATION_COUNT = generationCount;
+            org.workflowsim.planning.MLEAOPlanningAlgorithm.CONFIG_RANDOM_SEED = randomSeed;
 
             Parameters.init(totalVMs, daxPath, null, null, op, cp, sch_method, pln_method, null, 0);
 
@@ -236,9 +236,9 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
             // which bills every job at one flat datacenter-wide rate
             // regardless of which VM it ran on. CostModel.VM uses each
             // VM's own cost rate (the 0.15/0.30/0.60/0.90 schedule set in
-            // createHeterogeneousVMs above), which is what LIWSA's own
+            // createHeterogeneousVMs above), which is what MLEAO's own
             // internal fitness function assumes when it plans a schedule --
-            // without this line, the makespan/cost trade-offs LIWSA found
+            // without this line, the makespan/cost trade-offs MLEAO found
             // during planning will not match what gets reported here.
             Parameters.setCostModel(Parameters.CostModel.VM);
 
@@ -261,7 +261,7 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
             CloudSim.stopSimulation();
             long simWallClockMillis = System.currentTimeMillis() - simStart;
 
-            // Report what LIWSA's internal search actually found, alongside
+            // Report what MLEAO's internal search actually found, alongside
             // what the simulator reports for the committed schedule. These
             // should be close; large gaps would suggest the decoder's
             // assumptions (e.g. transfer cost model) don't fully match how
@@ -269,9 +269,9 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
             long searchWallClockMillis = 0;
             int paretoFrontSize = 1;
             double hypervolume = 0.0;
-            if (org.workflowsim.planning.LIWSAPlanningAlgorithm.lastRun != null) {
-                org.workflowsim.planning.LIWSAPlanningAlgorithm.LastRunMetrics m =
-                    org.workflowsim.planning.LIWSAPlanningAlgorithm.lastRun;
+            if (org.workflowsim.planning.MLEAOPlanningAlgorithm.lastRun != null) {
+                org.workflowsim.planning.MLEAOPlanningAlgorithm.LastRunMetrics m =
+                    org.workflowsim.planning.MLEAOPlanningAlgorithm.lastRun;
                 searchWallClockMillis = m.searchWallClockMillis;
                 paretoFrontSize = m.paretoFrontSize;
                 double[] ref = ParetoMetrics.sharedReferencePoint(
@@ -279,7 +279,7 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
                 hypervolume = ParetoMetrics.hypervolume2D(m.paretoFrontPoints, ref[0], ref[1]);
 
                 Log.printLine("");
-                Log.printLine("=== LIWSA SEARCH SUMMARY ===");
+                Log.printLine("=== MLEAO SEARCH SUMMARY ===");
                 Log.printLine(String.format("  Pareto front size : %d", m.paretoFrontSize));
                 Log.printLine(String.format("  Planned makespan  : %.2f s", m.chosenMakespan));
                 Log.printLine(String.format("  Planned cost      : %.4f", m.chosenCost));
@@ -293,7 +293,7 @@ public class LIWSAPlanningAlgorithmExample extends WorkflowSimBasicExample1 {
             printSummary(metrics, paretoFrontSize, hypervolume, searchWallClockMillis, simWallClockMillis);
 
             PrintWriter csv = ResultsCsvWriter.open(csvOutputPath);
-            ResultsCsvWriter.writeRow(csv, daxFile.getName().replace(".xml", ""), "LIWSA",
+            ResultsCsvWriter.writeRow(csv, daxFile.getName().replace(".xml", ""), "MLEAO",
                 randomSeed,
                 metrics.makespan, metrics.cost, paretoFrontSize, hypervolume,
                 metrics.avgUtilization, metrics.fairnessIndex, metrics.speedup,
