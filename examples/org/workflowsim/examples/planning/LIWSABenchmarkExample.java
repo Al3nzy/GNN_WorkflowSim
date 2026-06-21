@@ -1,5 +1,5 @@
 /**
- * Copyright 2026-2027 SDU University, Kazakhstan
+ * Copyright 2012-2013 University Of Southern California
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
@@ -136,15 +136,32 @@ public class LIWSABenchmarkExample {
         // ==============================================================
         // CONFIGURATION
         // ==============================================================
-
+    	
+        // Complete set of non-1000-task workflows across all five families,
+        // sorted by family then size. This is the full available set in
+        // config/dax/ (excluding HEFT_paper.xml, the 10-task toy graph
+        // from the original HEFT paper, and floodplain.xml, an unrelated
+        // single example workflow -- neither belongs to the five families
+        // being swept here). Running the full size range per family is
+        // what supports a scalability-vs-workflow-size analysis, not just
+        // a handful of isolated data points.
         String[] standardDaxFiles = {
-            "config/dax/Montage_50.xml",
-            "config/dax/Montage_100.xml",
-            "config/dax/CyberShake_30.xml",
-            "config/dax/CyberShake_50.xml",
-            "config/dax/Sipht_30.xml",
-        };
-
+                "config/dax/Montage_25.xml",
+                "config/dax/Montage_50.xml",
+                "config/dax/Montage_100.xml",
+                "config/dax/CyberShake_30.xml",
+                "config/dax/CyberShake_50.xml",
+                "config/dax/CyberShake_100.xml",
+                "config/dax/Sipht_30.xml",
+                "config/dax/Sipht_60.xml",
+                "config/dax/Sipht_100.xml",
+                "config/dax/Epigenomics_24.xml",
+                "config/dax/Epigenomics_46.xml",
+                "config/dax/Epigenomics_100.xml",
+                "config/dax/Inspiral_30.xml",
+                "config/dax/Inspiral_50.xml",
+                "config/dax/Inspiral_100.xml",
+            };
         // Large, real-trace workflows (~1000 tasks). These take notably
         // longer, and at least one of them (Epigenomics_997) contains
         // individual file transfers in the multi-gigabyte range, which
@@ -158,7 +175,7 @@ public class LIWSABenchmarkExample {
             "config/dax/Epigenomics_997.xml",
         };
 
-        boolean includeLargeWorkflows = true;
+        boolean includeLargeWorkflows = true; //make it false for fast resulting (without big dataset)
 
         int numSeeds = 5;
         long[] seeds = new long[numSeeds];
@@ -377,13 +394,34 @@ public class LIWSABenchmarkExample {
             df3.format(speedS.mean));
     }
 
+    /**
+     * Builds a warm-start assignment map keyed by the ORIGINAL Task's
+     * cloudlet ID (as assigned during DAX parsing), not the Job's own ID.
+     *
+     * This distinction matters and is easy to get wrong: WorkflowSim's
+     * BasicClustering.addTasks2Job() constructs each Job with `new
+     * Job(idIndex, ...)`, where idIndex is a separate counter starting
+     * at 0 -- completely independent of the Task's own cloudlet ID,
+     * which was assigned earlier, during DAX parsing, starting at 1.
+     * Job.getCloudletId() therefore returns a DIFFERENT number than the
+     * cloudlet ID the planning algorithm sees on its Task objects, even
+     * though Job extends Task. The original Task (with its real ID) is
+     * still reachable via job.getTaskList() -- with no clustering
+     * (ClusteringMethod.NONE, what every run in this benchmark uses)
+     * that list holds exactly one Task per Job, so this loop visits each
+     * Task exactly once. With clustering enabled, every Task absorbed
+     * into a multi-task Job would correctly share that Job's VM
+     * assignment as its seed value.
+     */
     private static Map<Integer, Integer> buildAssignmentMap(List<Job> jobs) {
         Map<Integer, Integer> map = new HashMap<>();
         for (Job job : jobs) {
             if (job.getClassType() == org.workflowsim.utils.Parameters.ClassType.STAGE_IN.value) {
                 continue;
             }
-            map.put(job.getCloudletId(), job.getVmId());
+            for (org.workflowsim.Task task : job.getTaskList()) {
+                map.put(task.getCloudletId(), job.getVmId());
+            }
         }
         return map;
     }
