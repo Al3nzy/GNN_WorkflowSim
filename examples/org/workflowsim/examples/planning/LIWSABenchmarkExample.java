@@ -1,5 +1,5 @@
 /**
- * Copyright 2012-2013 University Of Southern California
+ * Copyright 2026-2027 SDU University, Kazakhstan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
