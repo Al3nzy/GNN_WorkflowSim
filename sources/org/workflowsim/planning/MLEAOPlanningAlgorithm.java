@@ -1,6 +1,7 @@
 /**
- * Copyright 2012-2013 University Of Southern California
- *
+ * Copyright 2025-2026 SDU University, Kazakhstan
+ * @author Dr. Mohammed Alaa Ala'anzy
+ * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at

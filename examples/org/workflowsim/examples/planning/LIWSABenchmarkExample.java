@@ -1,5 +1,6 @@
 /**
- * Copyright 2012-2013 University Of Southern California
+ * Copyright 2025-2026 SDU University, Kazakhstan
+ * @author Dr. Mohammed Alaa Ala'anzy
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
@@ -136,7 +137,7 @@ public class LIWSABenchmarkExample {
         // ==============================================================
         // CONFIGURATION
         // ==============================================================
-    	
+
         // Complete set of non-1000-task workflows across all five families,
         // sorted by family then size. This is the full available set in
         // config/dax/ (excluding HEFT_paper.xml, the 10-task toy graph
@@ -146,22 +147,23 @@ public class LIWSABenchmarkExample {
         // what supports a scalability-vs-workflow-size analysis, not just
         // a handful of isolated data points.
         String[] standardDaxFiles = {
-                "config/dax/Montage_25.xml",
-                "config/dax/Montage_50.xml",
-                "config/dax/Montage_100.xml",
-                "config/dax/CyberShake_30.xml",
-                "config/dax/CyberShake_50.xml",
-                "config/dax/CyberShake_100.xml",
-                "config/dax/Sipht_30.xml",
-                "config/dax/Sipht_60.xml",
-                "config/dax/Sipht_100.xml",
-                "config/dax/Epigenomics_24.xml",
-                "config/dax/Epigenomics_46.xml",
-                "config/dax/Epigenomics_100.xml",
-                "config/dax/Inspiral_30.xml",
-                "config/dax/Inspiral_50.xml",
-                "config/dax/Inspiral_100.xml",
-            };
+            "config/dax/Montage_25.xml",
+            "config/dax/Montage_50.xml",
+            "config/dax/Montage_100.xml",
+            "config/dax/CyberShake_30.xml",
+            "config/dax/CyberShake_50.xml",
+            "config/dax/CyberShake_100.xml",
+            "config/dax/Sipht_30.xml",
+            "config/dax/Sipht_60.xml",
+            "config/dax/Sipht_100.xml",
+            "config/dax/Epigenomics_24.xml",
+            "config/dax/Epigenomics_46.xml",
+            "config/dax/Epigenomics_100.xml",
+            "config/dax/Inspiral_30.xml",
+            "config/dax/Inspiral_50.xml",
+            "config/dax/Inspiral_100.xml",
+        };
+
         // Large, real-trace workflows (~1000 tasks). These take notably
         // longer, and at least one of them (Epigenomics_997) contains
         // individual file transfers in the multi-gigabyte range, which
@@ -171,11 +173,12 @@ public class LIWSABenchmarkExample {
         String[] largeDaxFiles = {
             "config/dax/Montage_1000.xml",
             "config/dax/CyberShake_1000.xml",
+            "config/dax/Sipht_1000.xml",
             "config/dax/Inspiral_1000.xml",
             "config/dax/Epigenomics_997.xml",
         };
 
-        boolean includeLargeWorkflows = true; //make it false for fast resulting (without big dataset)
+        boolean includeLargeWorkflows = true;
 
         int numSeeds = 5;
         long[] seeds = new long[numSeeds];
