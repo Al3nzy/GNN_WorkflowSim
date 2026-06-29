@@ -1,132 +1,203 @@
-## NOTE: WorkflowSim IS NO LONGER MAINTAINED.
+# 🦗 WorkflowSim — Locust-Inspired Workflow Scheduling
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Java-11%2B-orange?logo=java" />
+  <img src="https://img.shields.io/badge/WorkflowSim-1.1.0-blue" />
+  <img src="https://img.shields.io/badge/CloudSim-3.0-blue" />
+  <img src="https://img.shields.io/badge/License-Apache%202.0-green" />
+  <img src="https://img.shields.io/badge/Benchmark-Pegasus%20DAX-purple" />
+  <img src="https://img.shields.io/badge/Paper-IEEE%20TCC-red" />
+</p>
+
+<p align="center">
+  <b>Density-Adaptive Locust Swarm Optimisation with Self-Supervised OLS Warm-Start<br>for Pareto-Optimal Cloud Workflow Scheduling</b><br>
+  <i>Dr. Mohammed Alaa Ala'anzy — SDU University, Kazakhstan</i>
+</p>
 
 ---
 
-Table of Contents
------------------
+> *Desert locusts don't follow a timer. They respond to crowding. So does LIWSA.*
 
-1. Directory structure of the WorkflowSim Toolkit
-2. Software requirements: Java version 1.6 or newer 
-3. Installation and running the WorkflowSim Toolkit
+When individual locusts sense neighbours around them, they shift from solitary foraging to collective swarming — not because a clock told them to, but because of local density. **LIWSA** brings this exact mechanism into cloud workflow scheduling: each candidate schedule measures its own neighbourhood crowding at every generation and decides its own phase probability. No weight. No global clock. No scalar aggregation of makespan vs cost.
 
+The result: a **true Pareto front** of scheduling options — not one solution, but a menu of makespan-vs-cost trade-offs — produced entirely inside WorkflowSim with zero external dependencies.
 
-1. Directory structure of the WorkflowSim Toolkit
-----------------------------------------------
+---
 
-workflowsim/			-- top level WorkflowSim directory
-	docs/			-- WorkflowSim API Documentation
-	examples/		-- WorkflowSim examples
-	lib/			-- WorkflowSim jar archives
-	sources/		-- WorkflowSim source code
+## 📁 Repository Structure
 
+```
+WorkflowSim_LocustModeling/
+└── examples/org/workflowsim/examples/planning/
+    ├── LIWSAPlanningAlgorithmExample.java      ← LIWSA single-run example
+    ├── LIWSAMLPlanningAlgorithmExample.java    ← LIWSA-ML single-run example
+    ├── LIWSABenchmarkExample.java              ← Full 20-instance benchmark driver
+    ├── MLEAOPlanningAlgorithmExample.java      ← MLEAO baseline example
+    ├── HEFTPlanningAlgorithmExample1.java      ← HEFT baseline example
+    ├── DHEFTPlanningAlgorithmExample1.java     ← DHEFT variant example
+    ├── HEFTBenchmark.java                      ← HEFT benchmark with metrics
+    ├── ParetoMetrics.java                      ← 2D hypervolume calculator
+    ├── ResultsCsvWriter.java                   ← Shared CSV output writer
+    └── RunMetricsCalculator.java               ← Shared metrics (all algorithms)
+```
 
-2. Software requirements: Java version 1.6 or newer
----------------------------------------------------
+---
 
-WorkflowSim has been tested and ran on Sun's Java version 1.8.0 or newer.
-If you have non-Sun Java version, such as gcj or J++, they may not be compatible.
-You can use Eclipse, NetBeans, or Ant to compile and run WorkflowSim
+## 🧠 The Algorithms
 
-3. Installation and running the WorkflowSim Toolkit
-### Welcome to WorkflowSim Pages.
-WorkflowSim is a workflow simulator to support large-scale scheduling, clustering and provisioning studies. It is developed by Weiwei Chen, a Phd student from University of Southern California under the Apache License version 2.0. WorkflowSim is not yet fully completed and we welcome your contribution to this project. 
+### LIWSA — Locust-Inspired Workflow Scheduling Algorithm
 
-This page introduces the basic features of WorkflowSim and how to install and run it with Eclipse or NetBeans.
+Each candidate schedule is an integer vector `X = (x₁, …, xₙ)` assigning task `tₖ` to VM `vmₓₖ`. At every generation, each individual:
 
-### 1. Use WorkflowSim with GitHub/Eclipse
+1. **Measures its local crowding density** `ρᵢ` — the fraction of population members within normalised Hamming distance `τ` (self-calibrated to the initial population's median pairwise distance, no hand-tuning needed).
+2. **Decides its own phase probability** `p_soc = (1−λ)·t/T_max + λ·ρᵢ` — blending measured crowding with mild global annealing.
+3. If **solitary** (`rand() > p_soc`): every other individual casts a signed, distance-weighted vote on each task's VM assignment. Better-ranked neighbours attract; worse-ranked ones repel. A softmax draw over the vote totals preserves diversity.
+4. If **gregarious** (`rand() ≤ p_soc`): selects a partner from the elite set (the current Pareto front) via roulette weighted by proximity and front rank, then copies tasks probabilistically.
+5. **Acceptance**: a child replaces its parent only if the parent does not strictly dominate the child — lateral moves to new non-dominated solutions are permitted.
 
-( It is suggested to use WorkflowSim if you are going to contribute back to this project, otherwise it is not required. )
+Fitness is determined by **Pareto dominance** over makespan `M(X)` and execution cost `Γ(X)` — no weights, no normalisation.
 
+### LIWSA-ML — OLS Warm-Start Extension
 
-1.1 Register a GitHub account and fork your own branch
+LIWSA-ML adds a pure-Java, zero-dependency warm-start that runs *inside* WorkflowSim before the main search:
 
-Go to the repository page (https://github.com/WorkflowSim/WorkflowSim-1.0) and click 'Fork' on the top-right corner next to 'Star'. Then you will have your own branch of WorkflowSim and you can maintain your codes under this branch and commit your changes to it. In this example, we use 'chenww05' as an example and you will see a new repo called chenww05/WorkflowSim-1.0. Go to your repo, and copy the path. In this case, it is "https://github.com/chenww05/WorkflowSim-1.0.git". 
+1. **Sample** `Nₛ = 400` random genotypes and decode them through the simulation.
+2. **Fit** two ordinary least-squares regressions (9×9 normal equations, solved via Gaussian elimination) predicting makespan and cost from a 9-dimensional (task, VM) feature vector: task length, topological level, fan-in/out, VM MIPS, cost rate, predicted duration, predicted cost, intercept — all normalised.
+3. **Inject** `Nₚ = 4` OLS-biased seed genotypes covering different points on the makespan-cost trade-off axis, plus the actual HEFT and Min-Min schedules (via cloudlet-ID-keyed assignment maps), for 6 warm-start seeds total.
+4. **Run LIWSA** from this biased initial population.
 
-1.2 Install EGit
+No TensorFlow. No PyTorch. No Python. One `.java` file.
 
+---
 
-Open your Eclipse, go to 'Help'->'Install New Software', in 'Work with', choose '--All Available Sites', make sure you have EGit listed, otherwise click the item and install it. 
+## 📊 Key Results (20 Pegasus Benchmark Instances, 5 Families, 5 Seeds Each)
 
-1.3 Check out your source codes
+| Algorithm | Hypervolume vs HEFT | Pareto Front Size | Data-Intensive Makespan |
+|-----------|--------------------:|:-----------------:|:-----------------------:|
+| HEFT | baseline (1×) | 1 | up to 18.8 days (Epigenomics 997) |
+| Min-Min | −31.0% avg | 1 | — |
+| MLEAO | +72.6% avg | 2–12 | — |
+| **LIWSA** | **+175.8% avg** | **5–30** | **−78.5% vs HEFT** |
+| **LIWSA-ML** | **+181.8% avg** | **5–29** | **−78.5% makespan, −10.0% cost** |
 
-First, create a new java project called 'WorkflowSim' (it doesn't have to be 'WorkflowSim'). Right click your project, choose 'Import'. Click 'Git'->'Projects from Git'. Set the URL to be "https://github.com/chenww05/WorkflowSim-1.0.git". And then you will see a branch called 'master', tick it and continue. And you don't need import projects again so just cancel. 
+On **data-intensive workflows** (Epigenomics, Inspiral at 1000 tasks), LIWSA-ML simultaneously reduces makespan **and** cost versus HEFT — constituting **true Pareto dominance**, not a trade-off.
 
-1.4 Import Source Files and Libraries
+On **compute-bound workflows** (Montage, CyberShake), HEFT's single solution is near-optimal on the makespan axis; LIWSA-ML still delivers 6–9 non-dominated solutions that expose cost-reduction options HEFT cannot.
 
-Right click the project again and choose 'Properties'. Go to 'Java Build Path'. Link two source directories (your_repo_root/examples, your_repo_root/sources)to the source folders. Add two external JARs (your_repo_root/lib/flanagan.jar and your_repo_root/lib/jdom-2.0.0.jar) to the Libraries.  
+---
 
-1.5 Run an Example
+## 🔧 Shared Infrastructure
 
-Run an example i.e., org.workflowsim.examples.WorkflowSimBasicExample1.java. Open WorkflowSimBasicExample1.java, replace the 
+All four algorithm drivers (`LIWSAPlanningAlgorithmExample`, `LIWSAMLPlanningAlgorithmExample`, `MLEAOPlanningAlgorithmExample`, `LIWSABenchmarkExample`) share the same supporting classes, so results are directly comparable without reconciling different column layouts or metric definitions:
 
-String daxPath = "/Users/chenweiwei/Work/WorkflowSim-1.0/config/dax/Montage_100.xml";
+**`RunMetricsCalculator`** — computes makespan, execution cost (using `CostModel.VM` per-second rates), average VM utilisation, Jain's fairness index, and scheduling speedup from the simulator's actual job results. One implementation, used by every driver.
 
-with your real physical file path. Right click on WorkflowSimBasicExample1.java and choose 'Run File'. You should be able to see some output:
+**`ParetoMetrics`** — 2D hypervolume calculator with a shared cross-algorithm reference point. The reference point (1.2× the worst makespan and cost across *all* algorithms and seeds for a given workflow) is computed once and reused — ensuring hypervolume comparisons are meaningful and not inflated by a single algorithm's own bad points.
 
-98        SUCCESS        2            0            6.91        263.78            270.69            8
-99        SUCCESS        2            0            0.83        270.69            271.52            9
+**`ResultsCsvWriter`** — single CSV schema, flushed to disk after every completed run (not buffered to the end), so a long benchmark interrupted partway through still leaves every completed result safely on disk.
 
-### 2. Use WorkflowSim with GitHub/NetBeans
+```
+workflow, algorithm, seed, makespan, cost, pareto_front_size, hypervolume,
+avg_utilization_pct, fairness_index, speedup, search_wallclock_ms, sim_wallclock_ms
+```
 
-2.1 Register a GitHub account and fork your own branch
+---
 
-It is the same to 1.1.
+## ⚙️ VM Pool Configuration
 
-2.2 Install Git
+The benchmark uses 16 heterogeneous VM instances (4 types × 4 each), spanning an 8× processing speed range and 6× cost range:
 
-Go to 'Teams'->'Available Plugins'. Search for 'Git' and install it. 
+| Type   | MIPS | BW (Mbit/s) | $/s  | RAM    | Count |
+|--------|-----:|------------:|-----:|-------:|------:|
+| Micro  | 250  | 160         | 0.15 | 512 MB | 4     |
+| Small  | 500  | 160         | 0.30 | 512 MB | 4     |
+| Medium | 1000 | 160         | 0.60 | 512 MB | 4     |
+| Large  | 2000 | 160         | 0.90 | 512 MB | 4     |
 
-2.3 Check out your source codes
+Scheduling uses `CloudletSchedulerSpaceShared`, no clustering, `FileSystem.LOCAL` replica catalog, 160 Mbit/s shared-fabric bandwidth.
 
-First, create a new java project with Existing Sources called 'WorkflowSim' (it doesn't have to be 'WorkflowSim'). Right click this project and choose 'Set as Main Project' for convenience. 
-Right click this project again and choose 'Versioning'->'Initialize Git Repository'. You don't need to change the root path, just click 'OK'. 
+---
 
-Right click the project and choose 'Git'->'Remote'->'Pull', set the 'Repository URL' to be 'https://github.com/chenww05/WorkflowSim-1.0.git' and the 'Remote name' to be 'master'. Click 'OK' and you will see a branch called 'master', tick it and continue. 
+## 🚀 Quick Start
 
-2.4 Import Source Files and Libraries
+**1. Clone and set up WorkflowSim 1.1.0 / CloudSim 3.0** as usual.
 
-After a while the download is down, right click the project again and choose 'Project Properties'. Go to 'Sources', click 'Add Folder' and choose two folders (your_repo_root/examples and your_repo_root/sources). Go to 'Libraries', add all jars  (your_repo_root/lib/*.jar). 
+**2. Place the planning files** into:
+```
+examples/org/workflowsim/examples/planning/
+```
 
-2.5 Run an Example
+**3. Run a single LIWSA-ML example:**
+```bash
+# Set daxPath in LIWSAMLPlanningAlgorithmExample.java, then:
+javac -cp .:workflowsim.jar LIWSAMLPlanningAlgorithmExample.java
+java  -cp .:workflowsim.jar org.workflowsim.examples.planning.LIWSAMLPlanningAlgorithmExample
+```
 
-The same to 1.5. 
+**4. Run the full benchmark** (all workflows, all algorithms, 5 seeds, CSV output):
+```bash
+java -cp .:workflowsim.jar org.workflowsim.examples.planning.LIWSABenchmarkExample
+# Results written to: results/benchmark_results.csv
+```
 
-### 3. Use WorkflowSim with Eclipse but without GitHub
-( If you don't want to contribute back to WorkflowSim with your codes, you can use WorkflowSim without GitHub. )
+**5. Run the HEFT baseline:**
+```bash
+java -cp .:workflowsim.jar org.workflowsim.examples.planning.HEFTBenchmark
+```
 
-3.1 Download Source Files. 
+---
 
-Skip 1.1 and 1.2. Different to 1.3, we download source files directly from https://github.com/WorkflowSim/WorkflowSim-1.0/archive/master.zip and unzip it to your_repo_root. 
+## 📐 Algorithm Parameters
 
-3.2 Switch to 1.4 and continue with the rest steps (1.5). 
+| Parameter | Value | Scope |
+|-----------|------:|-------|
+| Population size `P` | 30 | MLEAO, LIWSA, LIWSA-ML |
+| Generations `T_max` | 100 | MLEAO, LIWSA, LIWSA-ML |
+| Random seeds | 5 (1–5) | MLEAO, LIWSA, LIWSA-ML |
+| Neighbourhood radius `τ` | self-calibrated | LIWSA, LIWSA-ML |
+| Phase-mixing weight `λ` | 0.5 | LIWSA, LIWSA-ML |
+| Kernel parameters `F, L` | 3.0, 0.3 | LIWSA, LIWSA-ML |
+| Copy scale `α` | 1.2 | LIWSA, LIWSA-ML |
+| Min elite `δ_min` | 3 | LIWSA, LIWSA-ML |
+| Mutation rate `µ` | 0.02 | All |
+| OLS training samples `Nₛ` | 400 | LIWSA-ML only |
+| OLS seed genotypes `Nₚ` | 4 | LIWSA-ML only |
+| Softmax temperature `θ` | 0.5 | LIWSA-ML only |
 
-### 4. Use WorkflowSim with NetBeans but without GitHub
+---
 
-4.1 Download Source Files
+## 📚 Workflow Benchmark Suite
 
-The same to 3.1. 
+20 instances from the [Pegasus Workflow Gallery](https://pegasus.isi.edu/), across 5 scientific families at 4 scale points each (24–1000 tasks):
 
-4.2 Switch to 2.4 and continue with the rest steps (2.5).
+| Family | Scale Points | Type | Characteristic |
+|--------|-------------|------|----------------|
+| Montage | 25, 50, 100, 1000 | Compute-bound | Wide, flat DAG; astronomical image mosaic |
+| CyberShake | 30, 50, 100, 1000 | Compute-bound | Wide, flat DAG; seismic hazard simulation |
+| Sipht | 30, 60, 100, 1000 | Chain-heavy | Deep sequential chains; critical-path sensitive |
+| Epigenomics | 24, 46, 100, 997 | Data-intensive | Inter-task transfers up to 5.3 GB |
+| Inspiral | 30, 50, 100, 1000 | Data-intensive | Gravitational wave detection; multi-GB file transfers |
 
-### Authors and Contributors
-This page is written by Weiwei Chen @chenww05. For details or bug reports, please contact the author. 
+---
 
-### Support or Contact
-Please send an email to support@workflowsim.org. We appreciate your contribution to this project and please go to github to submit your bug report.  
-Many of the questions may have been answered in our wiki pages: https://github.com/WorkflowSim/WorkflowSim-1.0/wiki/_pages
-### Mailing Lists
+## 📄 Paper
 
-WorkflowSim Announce
-Message about new release or updates
-workflowsim-announce@googlegroups.com
+> **Density-Adaptive Locust Swarm Optimisation with Self-Supervised OLS Warm-Start for Pareto-Optimal Cloud Workflow Scheduling**  
+> Dr. Mohammed Alaa Ala'anzy  
+> *IEEE Transactions on Cloud Computing* (submitted)
 
-WorkflowSim Users
-Messages about WorkflowSim related questions/reports
-workflowsim-user@googlegroups.com
+Full numerical results for all 20 workflow instances are available in the [`results/`](https://github.com/Al3nzy/WorkflowSim_LocustModeling/tree/master/results) directory.
 
-WorkflowSim Developers
-Messages about WorkflowSim development
-workflowsim-dev@googlegroups.com
+---
 
+## 📜 License
 
+Copyright 2025–2026 SDU University, Kazakhstan.  
+Licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
 
+---
+
+<p align="center">
+  Built on <a href="https://github.com/WorkflowSim/WorkflowSim-1.0">WorkflowSim 1.1.0</a> and <a href="https://github.com/Cloudslab/cloudsim">CloudSim 3.0</a>.<br>
+  Benchmark traces from the <a href="https://pegasus.isi.edu/workflow_gallery/">Pegasus Workflow Management System Gallery</a>.
+</p>
