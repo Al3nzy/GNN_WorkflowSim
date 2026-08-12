@@ -1,0 +1,132 @@
+====================================================================
+LIWSA-GNN SETUP (second paper: cross-workflow GNN warm-start)
+====================================================================
+
+This extends the same WorkflowSim project the base paper (LIWSA /
+LIWSA-ML / MLEAO) already uses. Apply on top of the existing setup,
+not instead of it.
+
+PATCH 1 -- sources/org/workflowsim/utils/Parameters.java
+--------------------------------------------------------
+FIND:
+    public enum PlanningAlgorithm{
+        INVALID, RANDOM, HEFT, DHEFT, LIWSA, MLEAO, LIWSAML
+    }
+REPLACE WITH:
+    public enum PlanningAlgorithm{
+        INVALID, RANDOM, HEFT, DHEFT, LIWSA, MLEAO, LIWSAML, LIWSAGNN
+    }
+
+PATCH 2 -- sources/org/workflowsim/WorkflowPlanner.java
+--------------------------------------------------------
+FIND (after the LIWSAML case):
+            case LIWSAML:
+                planner = new LIWSAMLPlanningAlgorithm();
+                break;
+            default:
+REPLACE WITH:
+            case LIWSAML:
+                planner = new LIWSAMLPlanningAlgorithm();
+                break;
+            case LIWSAGNN:
+                planner = new LIWSAGNNPlanningAlgorithm();
+                break;
+            default:
+
+FILES TO ADD
+------------
+sources/org/workflowsim/planning/LIWSAGNNPlanningAlgorithm.java
+    The algorithm class itself. Extends LIWSAPlanningAlgorithm, no new
+    external dependency (pure Java, reads a plain-text weights file --
+    no ONNX, no libtorch, no JSON library).
+
+gnn_weights.txt
+    The trained model's weights, exported from the Python prototype.
+    Must be placed at the path LIWSAGNNPlanningAlgorithm.CONFIG_WEIGHTS_PATH
+    resolves to at runtime -- by default "gnn_weights.txt", resolved
+    relative to the JVM's working directory (same convention as the
+    "config/dax/..." paths used elsewhere in this project). If you run
+    from the project root, put the file there; otherwise set
+    LIWSAGNNPlanningAlgorithm.CONFIG_WEIGHTS_PATH to an absolute path
+    before running.
+
+IMPORTANT SCOPE NOTE FOR THE PAPER
+-----------------------------------
+The bundled weights were trained on all 20 Pegasus benchmark workflows
+(the same five families as the base paper). Two held-out evaluations
+were run before this was written up:
+
+  - Held-out SCALE (train on small/medium instances of all 5 families,
+    test on the 1000-task instances, never seen at that size): the GNN
+    beat a structure-blind baseline (identical features, no message
+    passing) on held-out prediction error in 5 of 5 random seeds.
+    Per-seed advantage ranged 2.2x-19.5x. Two valid ways to summarise
+    the central tendency, which are NOT interchangeable and should not
+    be conflated in the writeup: the ratio of mean test MSE (mean
+    baseline / mean GNN) is 4.8x; the mean of the five individual
+    per-seed ratios is 8.1x (pulled up by one strong seed at 19.5x).
+    State explicitly which one is being reported. A one-sided Wilcoxon
+    test (justified by the stated-in-advance directional hypothesis)
+    gives p=0.0312.
+
+  - Held-out FAMILY (train on 4 families entirely, test on the 5th,
+    a genuinely unseen DAG topology): the GNN was WORSE than the
+    structure-blind baseline in all 5 held-out families, by 1.4x-27.3x
+    (Montage 7.3x worse, CyberShake 12.8x worse, Sipht 1.4x worse,
+    Epigenomics 1.8x worse, Inspiral 27.3x worse). A synthetic-DAG
+    data-augmentation attempt (mixing structurally diverse random
+    graphs into training) helped on one held-out family (Montage,
+    1.62x improvement) and hurt on another (Inspiral, 0.60x, i.e.
+    worse), tested at only one seed each -- inconclusive, not a
+    reliable fix as currently scoped.
+
+CONCLUSION: this predictor is validated for generalising across
+PROBLEM SIZE within the five workflow families it was trained on. It
+is NOT validated for, and should not be presented as working on, a
+workflow family it has never seen. State this scope explicitly in the
+paper; do not claim general cross-workflow transfer.
+
+PYTHON PROTOTYPE (for reproducibility / methodology write-up)
+---------------------------------------------------------------
+All scripts used to build, train, and validate the model are included.
+The generated dataset files themselves (train_data.pkl, test_data.pkl,
+family_train/test_*.pkl, augmented_train_*.pkl, production_data.pkl)
+are NOT bundled, to keep the package small; only the final result
+checkpoints and the trained model are. To reproduce from scratch, run
+in this order from a directory that also has your WorkflowSim
+checkout's config/dax/ folder accessible at "config/dax" (adjust
+DAX_DIR at the top of the three build_*.py scripts if running from
+somewhere else):
+
+  1. build_dataset.py            -> train_data.pkl, test_data.pkl
+  2. run_one_seed.py 1..5        -> multiseed_checkpoint.pkl (5 seeds)
+  3. build_family_datasets.py    -> family_train/test_{family}.pkl x5
+  4. run_one_family.py <family>  -> family_holdout_checkpoint.pkl
+  5. build_augmented_dataset.py <family>  -> augmented_train_{family}.pkl
+  6. run_augmented_family.py <family>     -> printed comparison, not
+     currently checkpointed to a file (add one if this becomes a real
+     part of the paper rather than an exploratory check)
+  7. train_production.py         -> production_gnn.pt (needs
+     production_data.pkl, built by combining train_data.pkl and
+     test_data.pkl -- see the one-line combination in the conversation
+     this package came from, or regenerate via build_dataset.py's
+     output directly)
+  8. export_weights.py           -> gnn_weights.json, gnn_weights.txt
+  9. verify_plain_forward.py     -> re-runs the correctness check
+     (PyTorch vs. the plain-Python reference the Java port is based on)
+
+Scripts 2, 4, and 6 are single-seed/single-family per invocation by
+design (this sandbox could not reliably run longer background jobs;
+see the conversation history if reproducing elsewhere without that
+constraint -- a straightforward loop over all seeds/families in one
+process is simpler and there is no reason to keep the one-at-a-time
+structure on a normal machine).
+
+FILE PATHS FIXED FOR PORTABILITY: earlier versions of build_dataset.py,
+build_family_datasets.py, and build_augmented_dataset.py had DAX_DIR
+hardcoded to this sandbox's temporary extraction path
+(/tmp/check_code/wfsim/...), which would not exist on any other
+machine. This has been corrected to the relative path "config/dax",
+matching the convention used throughout the Java benchmark code
+elsewhere in this project.
+====================================================================

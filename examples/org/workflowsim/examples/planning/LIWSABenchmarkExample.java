@@ -48,6 +48,9 @@ import org.workflowsim.utils.ClusteringParameters;
 import org.workflowsim.utils.OverheadParameters;
 import org.workflowsim.utils.Parameters;
 import org.workflowsim.utils.ReplicaCatalog;
+import org.workflowsim.examples.planning.ResultsCsvWriter;
+import org.workflowsim.examples.planning.RunMetricsCalculator;
+import org.workflowsim.examples.planning.ParetoMetrics;
 
 /**
  * Benchmark driver: runs HEFT, Min-Min, MLEAO, LIWSA, and LIWSA-ML on a set
