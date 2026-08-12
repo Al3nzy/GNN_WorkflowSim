@@ -22,7 +22,7 @@
 
 ## 🚀 Overview
 
-This repository provides a unified framework combining **LIWSA** (Density-Adaptive Locust Swarm Optimisation)[cite: 2] and its **GNN-based Warm-Start Extension**[cite: 3, 4] for cloud workflow scheduling inside [WorkflowSim 1.1.0](https://github.com/WorkflowSim/WorkflowSim-1.0)[cite: 2] and [CloudSim 3.0](https://github.com/Cloudslab/cloudsim)[cite: 2].
+This repository provides a unified framework combining **LIWSA** (Density-Adaptive Locust Swarm Optimisation)[cite: 2] and its **GNN-based Warm-Start Extension**[cite: 3, 4] for cloud workflow scheduling inside [WorkflowSim 1.1.0](https://github.com/Al3nzy/WorkflowSim_GNN_LocustOptimisation/tree/main)[cite: 2] and [CloudSim 3.0](https://github.com/Al3nzy/WorkflowSim_LocustModeling)[cite: 2].
 
 The system combines:
 1. **Python GNN Training Pipeline**: Learns task execution metrics from DAG structural topology and exports standalone model weights[cite: 3, 4].
@@ -93,7 +93,7 @@ flowchart LR
 
 ## 📊 Experimental Benchmark Results (LIWSA-GNN)
 
-Below are the experimental results for **LIWSA-GNN** across 15 scientific workflow instances from the Pegasus Workflow Gallery (averaged across 5 random seeds):
+Experimental results for **LIWSA-GNN** across 15 scientific workflow instances from the Pegasus Workflow Gallery (evaluated across 5 random seeds):
 
 | Workflow | Tasks | Avg Makespan (s) | Avg Cost ($) | Avg Sim Wallclock (s) |
 | :--- | :---: | :---: | :---: | :---: |
@@ -115,71 +115,51 @@ Below are the experimental results for **LIWSA-GNN** across 15 scientific workfl
 
 ---
 
-## 🛠️ Execution & Getting Started
+## 🛠️ Execution & Quick Start
 
 ### Step 1: Python Pipeline (Dataset & GNN Model Export)
 
-To build datasets, train the GNN model, and export weights for Java consumption, run the following scripts in sequence from the root directory[cite: 1, 4]:
+Run the Python scripts in sequence from the repository root[cite: 1, 4]:
 
 ```bash
-# 1. Build training and testing datasets from DAX inputs
+# 1. Construct initial training/testing datasets from DAX inputs
 python build_dataset.py
 
-# 2. Train single-seed model baseline
+# 2. Perform initial training run across seeds
 python run_one_seed.py 1
 
-# 3. Construct family-specific holdout datasets
+# 3. Construct family-based datasets for held-out cross-family evaluation
 python build_family_datasets.py
 
-# 4. Evaluate multi-seed generalization across held-out families
+# 4. Run multi-seed evaluation across families
 python run_family_multiseed.py
 
-# 5. Train production model on full dataset
+# 5. Train the final production model on the complete dataset
 python train_production.py
 
-# 6. Export trained model weights to plain-text format for Java
+# 6. Export model weights into gnn_weights.txt (used by Java)
 python export_weights.py
 
-# 7. Verify mathematical equivalence between PyTorch and Java reference implementation
+# 7. Validate mathematical correctness between PyTorch and exported weights
 python verify_plain_forward.py
 ```[cite: 1, 4]
 
-Step 6 generates `gnn_weights.txt` in the root directory[cite: 4].
+Step 6 generates `gnn_weights.txt` in your working directory[cite: 4].
 
 ---
 
-### Step 2: Java Patch & Integration
+### Step 2: Run Java Benchmarks
 
-1. **Update Enum** in `sources/org/workflowsim/utils/Parameters.java`:
-   ```java
-   public enum PlanningAlgorithm {
-       INVALID, RANDOM, HEFT, DHEFT, LIWSA, MLEAO, LIWSAML, LIWSAGNN
-   }
-   ```[cite: 4]
-
-2. **Register Planner** in `sources/org/workflowsim/WorkflowPlanner.java`:
-   ```java
-   case LIWSAGNN:
-       planner = new LIWSAGNNPlanningAlgorithm();
-       break;
-   ```[cite: 4]
-
-3. **Deploy Model Weights**: Ensure `gnn_weights.txt` is located in the working directory from which your JVM command is run[cite: 4].
-
----
-
-### Step 3: Run WorkflowSim Experiments
-
-Compile the Java planner extensions and execute the benchmarks[cite: 2]:
+Compile and execute the simulation[cite: 2]:
 
 ```bash
-# Compile Java planner sources
+# Compile the Java planner
 javac -cp ".:workflowsim.jar:lib/*" sources/org/workflowsim/planning/LIWSAGNNPlanningAlgorithm.java
 
 # Run a single GNN-guided simulation run
 java -cp ".:workflowsim.jar:lib/*" org.workflowsim.examples.planning.LIWSAGNNPlanningAlgorithmExample
 
-# Run the full comparative benchmark
+# Run full benchmark evaluation
 java -cp ".:workflowsim.jar:lib/*" org.workflowsim.examples.planning.LIWSABenchmarkExample
 ```[cite: 2]
 
