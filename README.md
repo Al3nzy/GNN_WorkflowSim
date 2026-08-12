@@ -22,25 +22,25 @@
 
 ## 🚀 Overview
 
-This repository provides a unified framework combining **LIWSA** (Density-Adaptive Locust Swarm Optimisation)[cite: 2] and its **GNN-based Warm-Start Extension**[cite: 3, 4] for cloud workflow scheduling inside [WorkflowSim 1.1.0](https://github.com/Al3nzy/WorkflowSim_GNN_LocustOptimisation/tree/main)[cite: 2] and [CloudSim 3.0](https://github.com/Al3nzy/WorkflowSim_LocustModeling)[cite: 2].
+This repository provides a unified framework combining **LIWSA** (Density-Adaptive Locust Swarm Optimisation) and its **GNN-based Warm-Start Extension** for cloud workflow scheduling inside [WorkflowSim 1.1.0](https://github.com/Al3nzy/WorkflowSim_GNN_LocustOptimisation/tree/main) and [CloudSim 3.0](https://github.com/Al3nzy/WorkflowSim_LocustModeling).
 
 The system combines:
-1. **Python GNN Training Pipeline**: Learns task execution metrics from DAG structural topology and exports standalone model weights[cite: 3, 4].
-2. **Pure-Java WorkflowSim Extension**: Loads exported model weights without heavyweight native ML dependencies to initialize Pareto swarm optimization[cite: 2, 4].
-3. **Multi-Algorithm Benchmarking**: Integrated baseline comparisons including HEFT, Min-Min, MLEAO, LIWSA, LIWSA-ML, and LIWSA-GNN[cite: 2, 4].
+1. **Python GNN Training Pipeline**: Learns task execution metrics from DAG structural topology and exports standalone model weights.
+2. **Pure-Java WorkflowSim Extension**: Loads exported model weights without heavyweight native ML dependencies to initialize Pareto swarm optimization.
+3. **Multi-Algorithm Benchmarking**: Integrated baseline comparisons including HEFT, Min-Min, MLEAO, LIWSA, LIWSA-ML, and LIWSA-GNN.
 
 ---
 
 ## 🧠 Core Algorithms
 
 ### 1. LIWSA (Locust-Inspired Workflow Scheduling Algorithm)
-A multi-objective swarm optimization algorithm where candidate schedules switch between solitary and gregarious phases based on local crowding density $\rho_i$[cite: 2]. It produces a true Pareto front across **Makespan** and **Execution Cost** without needing scalar weights or objective normalization[cite: 2].
+A multi-objective swarm optimization algorithm where candidate schedules switch between solitary and gregarious phases based on local crowding density $\rho_i$. It produces a true Pareto front across **Makespan** and **Execution Cost** without needing scalar weights or objective normalization.
 
 ### 2. LIWSA-ML (OLS Warm-Start)
-Injects ordinary least-squares (OLS) regression predictions directly into the initial swarm population based on topological features, task fan-in/out, and VM processing speeds[cite: 2].
+Injects ordinary least-squares (OLS) regression predictions directly into the initial swarm population based on topological features, task fan-in/out, and VM processing speeds.
 
 ### 3. LIWSA-GNN (Graph Neural Network Warm-Start)
-Extends swarm initialization using a Graph Neural Network (GNN) trained on workflow DAG structures[cite: 3, 4]. The GNN embeds DAG nodes and message-passing dependencies to predict task metrics across varying workflow scales[cite: 4].
+Extends swarm initialization using a Graph Neural Network (GNN) trained on workflow DAG structures. The GNN embeds DAG nodes and message-passing dependencies to predict task metrics across varying workflow scales.
 
 ---
 
@@ -119,7 +119,7 @@ Experimental results for **LIWSA-GNN** across 15 scientific workflow instances f
 
 ### Step 1: Python Pipeline (Dataset & GNN Model Export)
 
-Run the Python scripts in sequence from the repository root[cite: 1, 4]:
+Run the Python scripts in sequence from the repository root:
 
 ```bash
 # 1. Construct initial training/testing datasets from DAX inputs
@@ -144,13 +144,13 @@ python export_weights.py
 python verify_plain_forward.py
 ```
 
-Step 6 generates `gnn_weights.txt` in your working directory[cite: 4].
+Step 6 generates `gnn_weights.txt` in your working directory.
 
 ---
 
 ### Step 2: Run Java Benchmarks
 
-Compile and execute the simulation[cite: 2]:
+Compile and execute the simulation:
 
 ```bash
 # Compile the Java planner
@@ -167,12 +167,12 @@ java -cp ".:workflowsim.jar:lib/*" org.workflowsim.examples.planning.LIWSABenchm
 
 ## 📚 Scope & Generalization Notes
 
-* **Scale Generalization**: The GNN predictor is validated for generalizing across **problem sizes** within the workflow families included in training (e.g., predicting on 1000-task workflows when trained on smaller instances)[cite: 4].
-* **Cross-Family Transfer**: Cross-family transfer to completely unseen DAG topologies requires synthetic data augmentation during pre-training[cite: 4].
+* **Scale Generalization**: The GNN predictor is validated for generalizing across **problem sizes** within the workflow families included in training (e.g., predicting on 1000-task workflows when trained on smaller instances).
+* **Cross-Family Transfer**: Cross-family transfer to completely unseen DAG topologies requires synthetic data augmentation during pre-training.
 
 ---
 
 ## 📄 License
 
-Copyright 2025–2026 SDU University, Kazakhstan[cite: 2].  
-Licensed under the [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)[cite: 2].
+Copyright 2025–2026 SDU University, Kazakhstan.  
+Licensed under the [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0).

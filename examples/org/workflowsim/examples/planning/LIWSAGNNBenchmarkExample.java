@@ -27,7 +27,7 @@ import org.workflowsim.utils.ClusteringParameters;
 import org.workflowsim.utils.OverheadParameters;
 import org.workflowsim.utils.Parameters;
 import org.workflowsim.utils.ReplicaCatalog;
-import org.workflowsim.examples.planning.ResultsCsvWriter;
+
 /**
  * Benchmark demonstration for LIWSA-GNN scheduling algorithm.
  * Evaluates all workflow families (Montage, CyberShake, Epigenomics, Inspiral, Sipht)
@@ -43,24 +43,38 @@ public class LIWSAGNNBenchmarkExample {
     };
 
     public static void main(String[] args) {
-      try {
-            // All datasets across the 5 workflow families
-            String[] daxFiles = {
+        try {
+            // Declare the String array properly instead of returning it
+            String[] daxFiles = new String[] {
+                // Montage
                 "config/dax/Montage_25.xml",
                 "config/dax/Montage_50.xml",
                 "config/dax/Montage_100.xml",
+                "config/dax/Montage_1000.xml",      // 1,000 tasks
+
+                // CyberShake
                 "config/dax/CyberShake_30.xml",
                 "config/dax/CyberShake_50.xml",
                 "config/dax/CyberShake_100.xml",
+                "config/dax/CyberShake_1000.xml",   // 1,000 tasks
+
+                // Epigenomics
                 "config/dax/Epigenomics_24.xml",
                 "config/dax/Epigenomics_46.xml",
                 "config/dax/Epigenomics_100.xml",
+                "config/dax/Epigenomics_997.xml",  // 997 tasks (use Epigenomics_997.xml if renamed)
+
+                // Inspiral
                 "config/dax/Inspiral_30.xml",
                 "config/dax/Inspiral_50.xml",
                 "config/dax/Inspiral_100.xml",
+                "config/dax/Inspiral_1000.xml",     // 1,000 tasks
+
+                // Sipht
                 "config/dax/Sipht_30.xml",
                 "config/dax/Sipht_60.xml",
-                "config/dax/Sipht_100.xml"
+                "config/dax/Sipht_100.xml",
+                "config/dax/Sipht_1000.xml"        // 1,000 tasks
             };
 
             int numSeeds = 5;

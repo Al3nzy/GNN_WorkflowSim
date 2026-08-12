@@ -43,6 +43,7 @@ import org.workflowsim.WorkflowDatacenter;
 import org.workflowsim.WorkflowEngine;
 import org.workflowsim.WorkflowPlanner;
 import org.workflowsim.planning.LIWSAPlanningAlgorithm;
+import org.workflowsim.planning.LIWSAGNNPlanningAlgorithm;
 import org.workflowsim.planning.MLEAOPlanningAlgorithm;
 import org.workflowsim.utils.ClusteringParameters;
 import org.workflowsim.utils.OverheadParameters;
@@ -53,7 +54,7 @@ import org.workflowsim.examples.planning.RunMetricsCalculator;
 import org.workflowsim.examples.planning.ParetoMetrics;
 
 /**
- * Benchmark driver: runs HEFT, Min-Min, MLEAO, LIWSA, and LIWSA-ML on a set
+ * Benchmark driver: runs HEFT, Min-Min, MLEAO, LIWSA, LIWSA-ML, and LIWSA-GNN on a set
  * of DAX files and prints a comparison report, while also writing every
  * result to a CSV file as it completes.
  *
@@ -90,7 +91,7 @@ import org.workflowsim.examples.planning.ParetoMetrics;
  * example drivers.
  *
  * TIMING: every run's search wall clock (the metaheuristic loop itself,
- * for MLEAO/LIWSA/LIWSA-ML) and full simulation wall clock are recorded
+ * for MLEAO/LIWSA/LIWSA-ML/LIWSA-GNN) and full simulation wall clock are recorded
  * and printed/written to CSV. Progress and elapsed time are printed after
  * each workflow, and total wall clock for the whole benchmark is printed
  * at the end.
@@ -250,6 +251,7 @@ public class LIWSABenchmarkExample {
             List<RunResult> mleaoRuns = new ArrayList<>();
             List<RunResult> liwsaRuns = new ArrayList<>();
             List<RunResult> liwsaMlRuns = new ArrayList<>();
+            List<RunResult> liwsaGnnRuns = new ArrayList<>();
 
             for (long seed : seeds) {
                 RunResult m = runPlanning(daxPath, Parameters.PlanningAlgorithm.MLEAO,
@@ -266,22 +268,27 @@ public class LIWSABenchmarkExample {
                     Parameters.SchedulingAlgorithm.STATIC, "LIWSA-ML", seed,
                     populationSize, generationCount, warmStartSeeds);
                 if (lm != null) { liwsaMlRuns.add(lm); }
+
+                RunResult gnn = runPlanning(daxPath, Parameters.PlanningAlgorithm.LIWSAGNN,
+                    Parameters.SchedulingAlgorithm.STATIC, "LIWSA-GNN", seed,
+                    populationSize, generationCount, warmStartSeeds);
+                if (gnn != null) { liwsaGnnRuns.add(gnn); }
             }
 
             // ---- FIX 2: shared hypervolume reference point, computed
             //      across every algorithm and every seed for THIS
             //      workflow, then applied uniformly to all of them ----
             List<List<double[]>> allFronts = new ArrayList<>();
-            for (RunResult r : allOf(heft, minmin, mleaoRuns, liwsaRuns, liwsaMlRuns)) {
+            for (RunResult r : allOf(heft, minmin, mleaoRuns, liwsaRuns, liwsaMlRuns, liwsaGnnRuns)) {
                 allFronts.add(r.frontPoints);
             }
             double[] ref = ParetoMetrics.sharedReferencePoint(allFronts);
-            for (RunResult r : allOf(heft, minmin, mleaoRuns, liwsaRuns, liwsaMlRuns)) {
+            for (RunResult r : allOf(heft, minmin, mleaoRuns, liwsaRuns, liwsaMlRuns, liwsaGnnRuns)) {
                 r.hypervolume = ParetoMetrics.hypervolume2D(r.frontPoints, ref[0], ref[1]);
             }
 
             // ---- write every result to CSV now that hypervolume is final ----
-            for (RunResult r : allOf(heft, minmin, mleaoRuns, liwsaRuns, liwsaMlRuns)) {
+            for (RunResult r : allOf(heft, minmin, mleaoRuns, liwsaRuns, liwsaMlRuns, liwsaGnnRuns)) {
                 ResultsCsvWriter.writeRow(csv, workflowName, r.name, r.seed,
                     r.makespan, r.cost, r.frontPoints.size(), r.hypervolume,
                     r.avgUtilization, r.fairnessIndex, r.speedup,
@@ -300,24 +307,28 @@ public class LIWSABenchmarkExample {
             printAggregate(df2, df1, df3, "MLEAO", mleaoRuns);
             printAggregate(df2, df1, df3, "LIWSA", liwsaRuns);
             printAggregate(df2, df1, df3, "LIWSA-ML", liwsaMlRuns);
+            printAggregate(df2, df1, df3, "LIWSA-GNN", liwsaGnnRuns);
 
-            if (heft != null && !liwsaRuns.isEmpty() && !mleaoRuns.isEmpty() && !liwsaMlRuns.isEmpty()) {
-                double liwsaMk = mean(liwsaRuns, r -> r.makespan);
-                double liwsaCost = mean(liwsaRuns, r -> r.cost);
-                double mleaoMk = mean(mleaoRuns, r -> r.makespan);
-                double mleaoCost = mean(mleaoRuns, r -> r.cost);
-                double mlMk = mean(liwsaMlRuns, r -> r.makespan);
-                double mlCost = mean(liwsaMlRuns, r -> r.cost);
+            if (heft != null && !liwsaGnnRuns.isEmpty()) {
+                double gnnMk = mean(liwsaGnnRuns, r -> r.makespan);
+                double gnnCost = mean(liwsaGnnRuns, r -> r.cost);
 
                 System.out.println();
-                System.out.printf("  LIWSA    vs HEFT:  makespan %+6.1f%%  cost %+6.1f%%%n",
-                    pct(liwsaMk, heft.makespan), pct(liwsaCost, heft.cost));
-                System.out.printf("  LIWSA-ML vs HEFT:  makespan %+6.1f%%  cost %+6.1f%%%n",
-                    pct(mlMk, heft.makespan), pct(mlCost, heft.cost));
-                System.out.printf("  LIWSA-ML vs MLEAO: makespan %+6.1f%%  cost %+6.1f%%%n",
-                    pct(mlMk, mleaoMk), pct(mlCost, mleaoCost));
-                System.out.printf("  LIWSA-ML vs LIWSA: makespan %+6.1f%%  cost %+6.1f%%%n",
-                    pct(mlMk, liwsaMk), pct(mlCost, liwsaCost));
+                System.out.printf("  LIWSA-GNN vs HEFT:     makespan %+6.1f%%  cost %+6.1f%%%n",
+                    pct(gnnMk, heft.makespan), pct(gnnCost, heft.cost));
+
+                if (!liwsaRuns.isEmpty()) {
+                    double liwsaMk = mean(liwsaRuns, r -> r.makespan);
+                    double liwsaCost = mean(liwsaRuns, r -> r.cost);
+                    System.out.printf("  LIWSA-GNN vs LIWSA:    makespan %+6.1f%%  cost %+6.1f%%%n",
+                        pct(gnnMk, liwsaMk), pct(gnnCost, liwsaCost));
+                }
+                if (!liwsaMlRuns.isEmpty()) {
+                    double mlMk = mean(liwsaMlRuns, r -> r.makespan);
+                    double mlCost = mean(liwsaMlRuns, r -> r.cost);
+                    System.out.printf("  LIWSA-GNN vs LIWSA-ML: makespan %+6.1f%%  cost %+6.1f%%%n",
+                        pct(gnnMk, mlMk), pct(gnnCost, mlCost));
+                }
             }
 
             // ---- timing / progress ----
@@ -445,10 +456,16 @@ public class LIWSABenchmarkExample {
             LIWSAPlanningAlgorithm.CONFIG_GENERATION_COUNT = generationCount;
             LIWSAPlanningAlgorithm.CONFIG_RANDOM_SEED = seed;
             LIWSAPlanningAlgorithm.CONFIG_SEED_ASSIGNMENTS = warmStartSeeds;
+
             MLEAOPlanningAlgorithm.CONFIG_POPULATION_SIZE = populationSize;
             MLEAOPlanningAlgorithm.CONFIG_GENERATION_COUNT = generationCount;
             MLEAOPlanningAlgorithm.CONFIG_RANDOM_SEED = seed;
             MLEAOPlanningAlgorithm.CONFIG_SEED_ASSIGNMENTS = warmStartSeeds;
+
+            LIWSAGNNPlanningAlgorithm.CONFIG_WEIGHTS_PATH = "gnn_weights.txt";
+            LIWSAGNNPlanningAlgorithm.CONFIG_NUM_CANDIDATES = 80;
+            LIWSAGNNPlanningAlgorithm.CONFIG_NUM_SEEDS_FROM_GNN = 4;
+            LIWSAGNNPlanningAlgorithm.CONFIG_RANDOM_SEED = seed;
 
             int totalVMs = 0;
             for (double[] t : VM_TYPES) { totalVMs += (int) t[5]; }
@@ -503,7 +520,12 @@ public class LIWSABenchmarkExample {
                     && MLEAOPlanningAlgorithm.lastRun != null) {
                 frontPoints = MLEAOPlanningAlgorithm.lastRun.paretoFrontPoints;
                 searchWall = MLEAOPlanningAlgorithm.lastRun.searchWallClockMillis;
+            } else if (planningAlg == Parameters.PlanningAlgorithm.LIWSAGNN
+                    && LIWSAGNNPlanningAlgorithm.lastRun != null) {
+                frontPoints = LIWSAGNNPlanningAlgorithm.lastRun.paretoFrontPoints;
+                searchWall = LIWSAGNNPlanningAlgorithm.lastRun.searchWallClockMillis;
             }
+
             r.searchWallClockMillis = searchWall;
             if (frontPoints != null) {
                 r.frontPoints = frontPoints;

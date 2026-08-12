@@ -5,6 +5,20 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "type": "java",
+            "name": "LIWSABenchmarkExample",
+            "request": "launch",
+            "mainClass": "org.workflowsim.examples.planning.LIWSABenchmarkExample",
+            "projectName": "NewLocustWorkflow"
+        },
+        {
+            "type": "java",
+            "name": "LIWSAGNNBenchmarkExample",
+            "request": "launch",
+            "mainClass": "org.workflowsim.examples.planning.LIWSAGNNBenchmarkExample",
+            "projectName": "NewLocustWorkflow"
+        },
+        {
             "type": "jdk",
             "request": "launch",
             "name": "Launch Java App"

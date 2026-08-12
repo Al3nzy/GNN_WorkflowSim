@@ -1,6 +1,7 @@
 {
-    "java.project.sourcePaths": ["sources", "examples"],
-    "java.project.referencedLibraries": [
-        "lib/**/*.jar"
-    ]
+  "java.project.referencedLibraries": [
+    "workflowsim.jar",
+    "lib/**/*.jar"
+],
+"java.debug.settings.onBuildFailureProceed": true
 }
