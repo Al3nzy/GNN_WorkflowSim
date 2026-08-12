@@ -1,203 +1,198 @@
-# 🦗 WorkflowSim — Locust-Inspired Workflow Scheduling
+# 🦗 WorkflowSim — GNN-Enhanced & Locust-Inspired Workflow Scheduling
 
 <p align="center">
   <img src="https://img.shields.io/badge/Java-11%2B-orange?logo=java" />
+  <img src="https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python" />
+  <img src="https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?logo=pytorch" />
   <img src="https://img.shields.io/badge/WorkflowSim-1.1.0-blue" />
   <img src="https://img.shields.io/badge/CloudSim-3.0-blue" />
   <img src="https://img.shields.io/badge/License-Apache%202.0-green" />
-  <img src="https://img.shields.io/badge/Benchmark-Pegasus%20DAX-purple" />
-  <img src="https://img.shields.io/badge/Paper-IEEE%20TCC-red" />
 </p>
 
 <p align="center">
-  <b>Density-Adaptive Locust Swarm Optimisation with Self-Supervised OLS Warm-Start<br>for Pareto-Optimal Cloud Workflow Scheduling</b><br>
+  <b>Structure-Aware Graph Neural Networks & Density-Adaptive Swarm Optimization for Cloud Workflow Scheduling</b><br>
   <i>Dr. Mohammed Alaa Ala'anzy — SDU University, Kazakhstan</i>
 </p>
 
 ---
 
-> *Desert locusts don't follow a timer. They respond to crowding. So does LIWSA.*
+> *Desert locusts don't follow a timer; they respond to crowding. LIWSA brings this mechanism into cloud workflow scheduling, while Graph Neural Networks (GNN) learn structural DAG patterns to guide the swarm search.*
 
-When individual locusts sense neighbours around them, they shift from solitary foraging to collective swarming — not because a clock told them to, but because of local density. **LIWSA** brings this exact mechanism into cloud workflow scheduling: each candidate schedule measures its own neighbourhood crowding at every generation and decides its own phase probability. No weight. No global clock. No scalar aggregation of makespan vs cost.
+---
 
-The result: a **true Pareto front** of scheduling options — not one solution, but a menu of makespan-vs-cost trade-offs — produced entirely inside WorkflowSim with zero external dependencies.
+## 🚀 Overview
+
+This repository provides a unified framework combining **LIWSA** (Density-Adaptive Locust Swarm Optimisation)[cite: 2] and its **GNN-based Warm-Start Extension**[cite: 3, 4] for cloud workflow scheduling inside [WorkflowSim 1.1.0](https://github.com/WorkflowSim/WorkflowSim-1.0)[cite: 2] and [CloudSim 3.0](https://github.com/Cloudslab/cloudsim)[cite: 2].
+
+The system combines:
+1. **Python GNN Training Pipeline**: Learns task execution metrics from DAG structural topology and exports standalone model weights[cite: 3, 4].
+2. **Pure-Java WorkflowSim Extension**: Loads exported model weights without heavyweight native ML dependencies to initialize Pareto swarm optimization[cite: 2, 4].
+3. **Multi-Algorithm Benchmarking**: Integrated baseline comparisons including HEFT, Min-Min, MLEAO, LIWSA, LIWSA-ML, and LIWSA-GNN[cite: 2, 4].
+
+---
+
+## 🧠 Core Algorithms
+
+### 1. LIWSA (Locust-Inspired Workflow Scheduling Algorithm)
+A multi-objective swarm optimization algorithm where candidate schedules switch between solitary and gregarious phases based on local crowding density $\rho_i$[cite: 2]. It produces a true Pareto front across **Makespan** and **Execution Cost** without needing scalar weights or objective normalization[cite: 2].
+
+### 2. LIWSA-ML (OLS Warm-Start)
+Injects ordinary least-squares (OLS) regression predictions directly into the initial swarm population based on topological features, task fan-in/out, and VM processing speeds[cite: 2].
+
+### 3. LIWSA-GNN (Graph Neural Network Warm-Start)
+Extends swarm initialization using a Graph Neural Network (GNN) trained on workflow DAG structures[cite: 3, 4]. The GNN embeds DAG nodes and message-passing dependencies to predict task metrics across varying workflow scales[cite: 4].
 
 ---
 
 ## 📁 Repository Structure
 
-```
-WorkflowSim_LocustModeling/
-└── examples/org/workflowsim/examples/planning/
-    ├── LIWSAPlanningAlgorithmExample.java      ← LIWSA single-run example
-    ├── LIWSAMLPlanningAlgorithmExample.java    ← LIWSA-ML single-run example
-    ├── LIWSABenchmarkExample.java              ← Full 20-instance benchmark driver
-    ├── MLEAOPlanningAlgorithmExample.java      ← MLEAO baseline example
-    ├── HEFTPlanningAlgorithmExample1.java      ← HEFT baseline example
-    ├── DHEFTPlanningAlgorithmExample1.java     ← DHEFT variant example
-    ├── HEFTBenchmark.java                      ← HEFT benchmark with metrics
-    ├── ParetoMetrics.java                      ← 2D hypervolume calculator
-    ├── ResultsCsvWriter.java                   ← Shared CSV output writer
-    └── RunMetricsCalculator.java               ← Shared metrics (all algorithms)
-```
+```text
+├── config/dax/                         # Benchmark scientific DAG inputs (.xml)
+├── sources/org/workflowsim/            # Java WorkflowSim Core & Planning
+│   ├── WorkflowPlanner.java            # Main planner dispatcher
+│   ├── planning/
+│   │   ├── LIWSAGNNPlanningAlgorithm.java # GNN-guided planner implementation
+│   │   ├── LIWSAPlanningAlgorithm.java   # Core LIWSA implementation
+│   │   ├── LIWSAMLPlanningAlgorithm.java # OLS-boosted LIWSA implementation
+│   │   ├── HEFTPlanningAlgorithmExample1.java
+│   │   ├── MLEAOPlanningAlgorithmExample.java
+│   │   ├── ParetoMetrics.java          # Hypervolume metrics calculator
+│   │   ├── ResultsCsvWriter.java       # Standardized CSV exporter
+│   │   └── RunMetricsCalculator.java   # Performance metrics evaluator
+├── gnn_weights.txt                     # Exported GNN model weights for Java runtime
+├── build_dataset.py                    # Constructs PyTorch base datasets
+├── build_family_datasets.py            # Generates family-specific datasets
+├── build_augmented_dataset.py          # Data augmentation via synthetic DAGs
+├── model.py                            # PyTorch GNN architecture definition
+├── decoder.py                          # Schedule decoding logic
+├── dax_parser.py                       # Pegasus DAX XML parser
+├── train_baseline.py                   # Structure-blind baseline training
+├── train_production.py                 # Production GNN model training
+├── run_one_seed.py                     # Single-seed execution runner
+├── run_family_multiseed.py             # Multi-seed held-out family evaluation
+├── export_weights.py                   # Exports PyTorch weights to gnn_weights.txt
+├── verify_plain_forward.py             # Validates Java-side forward pass math
+└── gnn_benchmark_results.csv           # Benchmark execution results
+```[cite: 1, 2, 3, 4]
 
 ---
 
-## 🧠 The Algorithms
+## 🔄 Execution Workflow
 
-### LIWSA — Locust-Inspired Workflow Scheduling Algorithm
-
-Each candidate schedule is an integer vector `X = (x₁, …, xₙ)` assigning task `tₖ` to VM `vmₓₖ`. At every generation, each individual:
-
-1. **Measures its local crowding density** `ρᵢ` — the fraction of population members within normalised Hamming distance `τ` (self-calibrated to the initial population's median pairwise distance, no hand-tuning needed).
-2. **Decides its own phase probability** `p_soc = (1−λ)·t/T_max + λ·ρᵢ` — blending measured crowding with mild global annealing.
-3. If **solitary** (`rand() > p_soc`): every other individual casts a signed, distance-weighted vote on each task's VM assignment. Better-ranked neighbours attract; worse-ranked ones repel. A softmax draw over the vote totals preserves diversity.
-4. If **gregarious** (`rand() ≤ p_soc`): selects a partner from the elite set (the current Pareto front) via roulette weighted by proximity and front rank, then copies tasks probabilistically.
-5. **Acceptance**: a child replaces its parent only if the parent does not strictly dominate the child — lateral moves to new non-dominated solutions are permitted.
-
-Fitness is determined by **Pareto dominance** over makespan `M(X)` and execution cost `Γ(X)` — no weights, no normalisation.
-
-### LIWSA-ML — OLS Warm-Start Extension
-
-LIWSA-ML adds a pure-Java, zero-dependency warm-start that runs *inside* WorkflowSim before the main search:
-
-1. **Sample** `Nₛ = 400` random genotypes and decode them through the simulation.
-2. **Fit** two ordinary least-squares regressions (9×9 normal equations, solved via Gaussian elimination) predicting makespan and cost from a 9-dimensional (task, VM) feature vector: task length, topological level, fan-in/out, VM MIPS, cost rate, predicted duration, predicted cost, intercept — all normalised.
-3. **Inject** `Nₚ = 4` OLS-biased seed genotypes covering different points on the makespan-cost trade-off axis, plus the actual HEFT and Min-Min schedules (via cloudlet-ID-keyed assignment maps), for 6 warm-start seeds total.
-4. **Run LIWSA** from this biased initial population.
-
-No TensorFlow. No PyTorch. No Python. One `.java` file.
+```mermaid
+flowchart LR
+    A[Pegasus DAX Files] --> B[Python Dataset Builder]
+    B --> C[PyTorch GNN Training]
+    C --> D[Weight Exporter]
+    D -->|gnn_weights.txt| E[Java WorkflowSim Planner]
+    E --> F[LIWSA Swarm Optimization]
+    F --> G[Pareto-Optimal Execution Results]
+```[cite: 3, 4]
 
 ---
 
-## 📊 Key Results (20 Pegasus Benchmark Instances, 5 Families, 5 Seeds Each)
+## 📊 Experimental Benchmark Results (LIWSA-GNN)
 
-| Algorithm | Hypervolume vs HEFT | Pareto Front Size | Data-Intensive Makespan |
-|-----------|--------------------:|:-----------------:|:-----------------------:|
-| HEFT | baseline (1×) | 1 | up to 18.8 days (Epigenomics 997) |
-| Min-Min | −31.0% avg | 1 | — |
-| MLEAO | +72.6% avg | 2–12 | — |
-| **LIWSA** | **+175.8% avg** | **5–30** | **−78.5% vs HEFT** |
-| **LIWSA-ML** | **+181.8% avg** | **5–29** | **−78.5% makespan, −10.0% cost** |
+Below are the experimental results for **LIWSA-GNN** across 15 scientific workflow instances from the Pegasus Workflow Gallery (averaged across 5 random seeds):
 
-On **data-intensive workflows** (Epigenomics, Inspiral at 1000 tasks), LIWSA-ML simultaneously reduces makespan **and** cost versus HEFT — constituting **true Pareto dominance**, not a trade-off.
-
-On **compute-bound workflows** (Montage, CyberShake), HEFT's single solution is near-optimal on the makespan axis; LIWSA-ML still delivers 6–9 non-dominated solutions that expose cost-reduction options HEFT cannot.
-
----
-
-## 🔧 Shared Infrastructure
-
-All four algorithm drivers (`LIWSAPlanningAlgorithmExample`, `LIWSAMLPlanningAlgorithmExample`, `MLEAOPlanningAlgorithmExample`, `LIWSABenchmarkExample`) share the same supporting classes, so results are directly comparable without reconciling different column layouts or metric definitions:
-
-**`RunMetricsCalculator`** — computes makespan, execution cost (using `CostModel.VM` per-second rates), average VM utilisation, Jain's fairness index, and scheduling speedup from the simulator's actual job results. One implementation, used by every driver.
-
-**`ParetoMetrics`** — 2D hypervolume calculator with a shared cross-algorithm reference point. The reference point (1.2× the worst makespan and cost across *all* algorithms and seeds for a given workflow) is computed once and reused — ensuring hypervolume comparisons are meaningful and not inflated by a single algorithm's own bad points.
-
-**`ResultsCsvWriter`** — single CSV schema, flushed to disk after every completed run (not buffered to the end), so a long benchmark interrupted partway through still leaves every completed result safely on disk.
-
-```
-workflow, algorithm, seed, makespan, cost, pareto_front_size, hypervolume,
-avg_utilization_pct, fairness_index, speedup, search_wallclock_ms, sim_wallclock_ms
-```
+| Workflow | Tasks | Avg Makespan (s) | Avg Cost ($) | Avg Sim Wallclock (s) |
+| :--- | :---: | :---: | :---: | :---: |
+| **CyberShake_30** | 30 | 394.60 | 815.78 | 0.082 |
+| **CyberShake_50** | 50 | 559.57 | 1,631.05 | 0.150 |
+| **CyberShake_100** | 100 | 966.36 | 3,350.46 | 0.326 |
+| **Epigenomics_24** | 24 | 4,015.80 | 8,384.21 | 0.082 |
+| **Epigenomics_46** | 46 | 7,695.44 | 19,942.00 | 0.154 |
+| **Epigenomics_100** | 100 | 55,835.70 | 199,899.00 | 0.346 |
+| **Inspiral_30** | 30 | 853.61 | 3,141.33 | 0.084 |
+| **Inspiral_50** | 50 | 1,352.08 | 5,623.66 | 0.144 |
+| **Inspiral_100** | 100 | 2,896.56 | 9,930.78 | 0.310 |
+| **Montage_25** | 25 | 47.30 | 105.73 | 0.242 |
+| **Montage_50** | 50 | 84.01 | 242.82 | 0.172 |
+| **Montage_100** | 100 | 136.15 | 536.31 | 0.346 |
+| **Sipht_30** | 30 | 2,207.63 | 2,498.77 | 0.212 |
+| **Sipht_60** | 60 | 2,332.87 | 5,256.17 | 0.406 |
+| **Sipht_100** | 100 | 2,438.34 | 8,268.49 | 0.674 |
 
 ---
 
-## ⚙️ VM Pool Configuration
+## 🛠️ Execution & Getting Started
 
-The benchmark uses 16 heterogeneous VM instances (4 types × 4 each), spanning an 8× processing speed range and 6× cost range:
+### Step 1: Python Pipeline (Dataset & GNN Model Export)
 
-| Type   | MIPS | BW (Mbit/s) | $/s  | RAM    | Count |
-|--------|-----:|------------:|-----:|-------:|------:|
-| Micro  | 250  | 160         | 0.15 | 512 MB | 4     |
-| Small  | 500  | 160         | 0.30 | 512 MB | 4     |
-| Medium | 1000 | 160         | 0.60 | 512 MB | 4     |
-| Large  | 2000 | 160         | 0.90 | 512 MB | 4     |
+To build datasets, train the GNN model, and export weights for Java consumption, run the following scripts in sequence from the root directory[cite: 1, 4]:
 
-Scheduling uses `CloudletSchedulerSpaceShared`, no clustering, `FileSystem.LOCAL` replica catalog, 160 Mbit/s shared-fabric bandwidth.
-
----
-
-## 🚀 Quick Start
-
-**1. Clone and set up WorkflowSim 1.1.0 / CloudSim 3.0** as usual.
-
-**2. Place the planning files** into:
-```
-examples/org/workflowsim/examples/planning/
-```
-
-**3. Run a single LIWSA-ML example:**
 ```bash
-# Set daxPath in LIWSAMLPlanningAlgorithmExample.java, then:
-javac -cp .:workflowsim.jar LIWSAMLPlanningAlgorithmExample.java
-java  -cp .:workflowsim.jar org.workflowsim.examples.planning.LIWSAMLPlanningAlgorithmExample
-```
+# 1. Build training and testing datasets from DAX inputs
+python build_dataset.py
 
-**4. Run the full benchmark** (all workflows, all algorithms, 5 seeds, CSV output):
+# 2. Train single-seed model baseline
+python run_one_seed.py 1
+
+# 3. Construct family-specific holdout datasets
+python build_family_datasets.py
+
+# 4. Evaluate multi-seed generalization across held-out families
+python run_family_multiseed.py
+
+# 5. Train production model on full dataset
+python train_production.py
+
+# 6. Export trained model weights to plain-text format for Java
+python export_weights.py
+
+# 7. Verify mathematical equivalence between PyTorch and Java reference implementation
+python verify_plain_forward.py
+```[cite: 1, 4]
+
+Step 6 generates `gnn_weights.txt` in the root directory[cite: 4].
+
+---
+
+### Step 2: Java Patch & Integration
+
+1. **Update Enum** in `sources/org/workflowsim/utils/Parameters.java`:
+   ```java
+   public enum PlanningAlgorithm {
+       INVALID, RANDOM, HEFT, DHEFT, LIWSA, MLEAO, LIWSAML, LIWSAGNN
+   }
+   ```[cite: 4]
+
+2. **Register Planner** in `sources/org/workflowsim/WorkflowPlanner.java`:
+   ```java
+   case LIWSAGNN:
+       planner = new LIWSAGNNPlanningAlgorithm();
+       break;
+   ```[cite: 4]
+
+3. **Deploy Model Weights**: Ensure `gnn_weights.txt` is located in the working directory from which your JVM command is run[cite: 4].
+
+---
+
+### Step 3: Run WorkflowSim Experiments
+
+Compile the Java planner extensions and execute the benchmarks[cite: 2]:
+
 ```bash
-java -cp .:workflowsim.jar org.workflowsim.examples.planning.LIWSABenchmarkExample
-# Results written to: results/benchmark_results.csv
-```
+# Compile Java planner sources
+javac -cp ".:workflowsim.jar:lib/*" sources/org/workflowsim/planning/LIWSAGNNPlanningAlgorithm.java
 
-**5. Run the HEFT baseline:**
-```bash
-java -cp .:workflowsim.jar org.workflowsim.examples.planning.HEFTBenchmark
-```
+# Run a single GNN-guided simulation run
+java -cp ".:workflowsim.jar:lib/*" org.workflowsim.examples.planning.LIWSAGNNPlanningAlgorithmExample
 
----
-
-## 📐 Algorithm Parameters
-
-| Parameter | Value | Scope |
-|-----------|------:|-------|
-| Population size `P` | 30 | MLEAO, LIWSA, LIWSA-ML |
-| Generations `T_max` | 100 | MLEAO, LIWSA, LIWSA-ML |
-| Random seeds | 5 (1–5) | MLEAO, LIWSA, LIWSA-ML |
-| Neighbourhood radius `τ` | self-calibrated | LIWSA, LIWSA-ML |
-| Phase-mixing weight `λ` | 0.5 | LIWSA, LIWSA-ML |
-| Kernel parameters `F, L` | 3.0, 0.3 | LIWSA, LIWSA-ML |
-| Copy scale `α` | 1.2 | LIWSA, LIWSA-ML |
-| Min elite `δ_min` | 3 | LIWSA, LIWSA-ML |
-| Mutation rate `µ` | 0.02 | All |
-| OLS training samples `Nₛ` | 400 | LIWSA-ML only |
-| OLS seed genotypes `Nₚ` | 4 | LIWSA-ML only |
-| Softmax temperature `θ` | 0.5 | LIWSA-ML only |
+# Run the full comparative benchmark
+java -cp ".:workflowsim.jar:lib/*" org.workflowsim.examples.planning.LIWSABenchmarkExample
+```[cite: 2]
 
 ---
 
-## 📚 Workflow Benchmark Suite
+## 📚 Scope & Generalization Notes
 
-20 instances from the [Pegasus Workflow Gallery](https://pegasus.isi.edu/), across 5 scientific families at 4 scale points each (24–1000 tasks):
-
-| Family | Scale Points | Type | Characteristic |
-|--------|-------------|------|----------------|
-| Montage | 25, 50, 100, 1000 | Compute-bound | Wide, flat DAG; astronomical image mosaic |
-| CyberShake | 30, 50, 100, 1000 | Compute-bound | Wide, flat DAG; seismic hazard simulation |
-| Sipht | 30, 60, 100, 1000 | Chain-heavy | Deep sequential chains; critical-path sensitive |
-| Epigenomics | 24, 46, 100, 997 | Data-intensive | Inter-task transfers up to 5.3 GB |
-| Inspiral | 30, 50, 100, 1000 | Data-intensive | Gravitational wave detection; multi-GB file transfers |
+* **Scale Generalization**: The GNN predictor is validated for generalizing across **problem sizes** within the workflow families included in training (e.g., predicting on 1000-task workflows when trained on smaller instances)[cite: 4].
+* **Cross-Family Transfer**: Cross-family transfer to completely unseen DAG topologies requires synthetic data augmentation during pre-training[cite: 4].
 
 ---
 
-## 📄 Paper
+## 📄 License
 
-> **Density-Adaptive Locust Swarm Optimisation with Self-Supervised OLS Warm-Start for Pareto-Optimal Cloud Workflow Scheduling**  
-> Dr. Mohammed Alaa Ala'anzy  
-> *IEEE Transactions on Cloud Computing* (submitted)
-
-Full numerical results for all 20 workflow instances are available in the [`results/`](https://github.com/Al3nzy/WorkflowSim_LocustModeling/tree/master/results) directory.
-
----
-
-## 📜 License
-
-Copyright 2025–2026 SDU University, Kazakhstan.  
-Licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
-
----
-
-<p align="center">
-  Built on <a href="https://github.com/WorkflowSim/WorkflowSim-1.0">WorkflowSim 1.1.0</a> and <a href="https://github.com/Cloudslab/cloudsim">CloudSim 3.0</a>.<br>
-  Benchmark traces from the <a href="https://pegasus.isi.edu/workflow_gallery/">Pegasus Workflow Management System Gallery</a>.
-</p>
+Copyright 2025–2026 SDU University, Kazakhstan[cite: 2].  
+Licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)[cite: 2].
