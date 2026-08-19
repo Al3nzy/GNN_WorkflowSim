@@ -1,4 +1,4 @@
-# 🦗 WorkflowSim — GNN-Enhanced & Locust-Inspired Workflow Scheduling
+# 🦗 WorkflowSim — LIWSA & LIWSA-GNN Cloud Workflow Scheduling
 
 <p align="center">
   <img src="https://img.shields.io/badge/Java-11%2B-orange?logo=java" />
@@ -10,69 +10,69 @@
 </p>
 
 <p align="center">
-  <b>Structure-Aware Graph Neural Networks & Density-Adaptive Swarm Optimization for Cloud Workflow Scheduling</b><br>
-  <i>Dr. Mohammed Alaa Ala'anzy — SDU University, Kazakhstan</i>
+  <b>Direction-Aware Graph Neural Network Warm-Starting for a Density-Adaptive Swarm Search over Cloud Workflow Schedules</b><br>
+  <i>Mohammed Alaa Ala'anzy — SDU University, Kazakhstan</i>
 </p>
 
 ---
 
-> *Desert locusts don't follow a timer; they respond to crowding. LIWSA brings this mechanism into cloud workflow scheduling, while Graph Neural Networks (GNN) learn structural DAG patterns to guide the swarm search.*
+> *Desert locusts don't follow a timer; they respond to crowding. LIWSA brings this mechanism into cloud workflow scheduling. LIWSA-GNN warm-starts LIWSA's initial population with a graph neural network that reads the workflow's actual task-dependency structure, rather than flattening it into per-task summary statistics.*
 
 ---
 
 ## 🚀 Overview
 
-This repository provides a unified framework combining **LIWSA** (Density-Adaptive Locust Swarm Optimisation) and its **GNN-based Warm-Start Extension** for cloud workflow scheduling inside [WorkflowSim 1.1.0](https://github.com/Al3nzy/WorkflowSim_GNN_LocustOptimisation/tree/main) and [CloudSim 3.0](https://github.com/Al3nzy/WorkflowSim_LocustModeling).
+This repository implements **LIWSA** (a density-adaptive, locust-inspired multi-objective swarm search for cloud workflow scheduling) and **LIWSA-GNN** (its direction-aware graph neural network warm-start extension) inside [WorkflowSim 1.1.0](https://github.com/Al3nzy/WorkflowSim_GNN_LocustOptimisation/tree/main) and [CloudSim 3.0](https://github.com/Al3nzy/WorkflowSim_LocustModeling).
 
-The system combines:
-1. **Python GNN Training Pipeline**: Learns task execution metrics from DAG structural topology and exports standalone model weights.
-2. **Pure-Java WorkflowSim Extension**: Loads exported model weights without heavyweight native ML dependencies to initialize Pareto swarm optimization.
-3. **Multi-Algorithm Benchmarking**: Integrated baseline comparisons including HEFT, Min-Min, MLEAO, LIWSA, LIWSA-ML, and LIWSA-GNN.
+The system has two parts:
+1. **Python GNN training pipeline**: builds training data from Pegasus DAX workflow files, trains the direction-aware message-passing GNN, and exports its weights to a plain-text file.
+2. **Pure-Java WorkflowSim planner**: loads those exported weights (no PyTorch, no native ML runtime) to warm-start LIWSA's population, then runs the swarm search inside WorkflowSim/CloudSim.
+
+Baseline comparators included for benchmarking: HEFT, Min-Min, and MLEAO (a reimplementation of the Archimedes Optimization Algorithm adapted to multi-objective workflow scheduling).
 
 ---
 
 ## 🧠 Core Algorithms
 
 ### 1. LIWSA (Locust-Inspired Workflow Scheduling Algorithm)
-A multi-objective swarm optimization algorithm where candidate schedules switch between solitary and gregarious phases based on local crowding density $\rho_i$. It produces a true Pareto front across **Makespan** and **Execution Cost** without needing scalar weights or objective normalization.
+A multi-objective swarm search where each candidate schedule switches between solitary and gregarious search operators based on local crowding density $\rho_i$, producing a true Pareto front across **makespan** and **execution cost** without scalarising the two objectives.
 
-### 2. LIWSA-ML (OLS Warm-Start)
-Injects ordinary least-squares (OLS) regression predictions directly into the initial swarm population based on topological features, task fan-in/out, and VM processing speeds.
-
-### 3. LIWSA-GNN (Graph Neural Network Warm-Start)
-Extends swarm initialization using a Graph Neural Network (GNN) trained on workflow DAG structures. The GNN embeds DAG nodes and message-passing dependencies to predict task metrics across varying workflow scales.
+### 2. LIWSA-GNN (Graph Neural Network Warm-Start)
+Warm-starts LIWSA's initial population with a direction-aware message-passing GNN trained on workflow DAG structure. The GNN aggregates each task's features separately from its parents and its children, is deployed as a fitness oracle that scores complete candidate genotypes, and its top-ranked candidates seed the swarm.
 
 ---
 
 ## 📁 Repository Structure
 
 ```text
-├── config/dax/                         # Benchmark scientific DAG inputs (.xml)
-├── sources/org/workflowsim/            # Java WorkflowSim Core & Planning
-│   ├── WorkflowPlanner.java            # Main planner dispatcher
-│   ├── planning/
-│   │   ├── LIWSAGNNPlanningAlgorithm.java # GNN-guided planner implementation
-│   │   ├── LIWSAPlanningAlgorithm.java   # Core LIWSA implementation
-│   │   ├── LIWSAMLPlanningAlgorithm.java # OLS-boosted LIWSA implementation
-│   │   ├── HEFTPlanningAlgorithmExample1.java
-│   │   ├── MLEAOPlanningAlgorithmExample.java
-│   │   ├── ParetoMetrics.java          # Hypervolume metrics calculator
-│   │   ├── ResultsCsvWriter.java       # Standardized CSV exporter
-│   │   └── RunMetricsCalculator.java   # Performance metrics evaluator
-├── gnn_weights.txt                     # Exported GNN model weights for Java runtime
-├── build_dataset.py                    # Constructs PyTorch base datasets
-├── build_family_datasets.py            # Generates family-specific datasets
-├── build_augmented_dataset.py          # Data augmentation via synthetic DAGs
-├── model.py                            # PyTorch GNN architecture definition
-├── decoder.py                          # Schedule decoding logic
-├── dax_parser.py                       # Pegasus DAX XML parser
-├── train_baseline.py                   # Structure-blind baseline training
-├── train_production.py                 # Production GNN model training
-├── run_one_seed.py                     # Single-seed execution runner
-├── run_family_multiseed.py             # Multi-seed held-out family evaluation
-├── export_weights.py                   # Exports PyTorch weights to gnn_weights.txt
-├── verify_plain_forward.py             # Validates Java-side forward pass math
-└── gnn_benchmark_results.csv           # Benchmark execution results
+├── config/dax/                          # Benchmark scientific DAG inputs (.xml)
+├── sources/org/workflowsim/             # Java WorkflowSim core & planning
+│   ├── WorkflowPlanner.java             # Main planner dispatcher
+│   └── planning/
+│       ├── LIWSAGNNPlanningAlgorithm.java # GNN-warm-started planner
+│       ├── LIWSAPlanningAlgorithm.java    # Core LIWSA swarm search
+│       ├── HEFTPlanningAlgorithmExample1.java
+│       ├── MLEAOPlanningAlgorithmExample.java
+│       ├── ParetoMetrics.java           # Hypervolume / Pareto-front metrics
+│       ├── ResultsCsvWriter.java        # Standardised CSV exporter
+│       └── RunMetricsCalculator.java    # Performance metrics evaluator
+├── examples/org/workflowsim/examples/planning/
+│   └── LIWSABenchmarkExample.java       # Full benchmark runner (all algorithms, all instances)
+├── gnn_weights.txt                      # Exported GNN weights consumed by the Java planner
+├── training_data.py                     # Shared DAX loading + sampling routines
+├── model.py                             # PyTorch GNN architecture
+├── decoder.py                           # Schedule decoding logic
+├── dax_parser.py                        # Pegasus DAX XML parser
+├── train_baseline.py                    # Structure-blind ablation baseline
+├── build_dataset.py                     # Scale-generalisation train/test split
+├── build_family_datasets.py             # Topology-generalisation (family-holdout) splits
+├── build_production_dataset.py          # Pooled, non-held-out dataset for the deployed model
+├── run_one_seed.py                      # Single-seed scale-generalisation run
+├── run_family_multiseed.py              # Multi-seed topology-generalisation run
+├── train_production.py                  # Trains the single deployed model
+├── export_weights.py                    # PyTorch weights -> gnn_weights.json
+├── verify_plain_forward.py              # gnn_weights.json -> gnn_weights.txt, plus a numerical correctness check
+└── results/benchmark_results.csv        # Full benchmark output (all algorithms, all instances, all seeds)
 ```
 
 ---
@@ -85,94 +85,96 @@ flowchart LR
     B --> C[PyTorch GNN Training]
     C --> D[Weight Exporter]
     D -->|gnn_weights.txt| E[Java WorkflowSim Planner]
-    E --> F[LIWSA Swarm Optimization]
-    F --> G[Pareto-Optimal Execution Results]
+    E --> F[LIWSA Swarm Search]
+    F --> G[Pareto-Optimal Schedules + results/benchmark_results.csv]
 ```
 
 ---
 
-## 📊 Experimental Benchmark Results (LIWSA-GNN)
+## 🛠️ Quick Start: Python, Then Java
 
-Experimental results for **LIWSA-GNN** across 15 scientific workflow instances from the Pegasus Workflow Gallery (evaluated across 5 random seeds):
+### Step 1: Python pipeline (dataset construction, GNN training, weight export)
 
-| Workflow | Tasks | Avg Makespan (s) | Avg Cost ($) | Avg Sim Wallclock (s) |
-| :--- | :---: | :---: | :---: | :---: |
-| **CyberShake_30** | 30 | 394.60 | 815.78 | 0.082 |
-| **CyberShake_50** | 50 | 559.57 | 1,631.05 | 0.150 |
-| **CyberShake_100** | 100 | 966.36 | 3,350.46 | 0.326 |
-| **Epigenomics_24** | 24 | 4,015.80 | 8,384.21 | 0.082 |
-| **Epigenomics_46** | 46 | 7,695.44 | 19,942.00 | 0.154 |
-| **Epigenomics_100** | 100 | 55,835.70 | 199,899.00 | 0.346 |
-| **Inspiral_30** | 30 | 853.61 | 3,141.33 | 0.084 |
-| **Inspiral_50** | 50 | 1,352.08 | 5,623.66 | 0.144 |
-| **Inspiral_100** | 100 | 2,896.56 | 9,930.78 | 0.310 |
-| **Montage_25** | 25 | 47.30 | 105.73 | 0.242 |
-| **Montage_50** | 50 | 84.01 | 242.82 | 0.172 |
-| **Montage_100** | 100 | 136.15 | 536.31 | 0.346 |
-| **Sipht_30** | 30 | 2,207.63 | 2,498.77 | 0.212 |
-| **Sipht_60** | 60 | 2,332.87 | 5,256.17 | 0.406 |
-| **Sipht_100** | 100 | 2,438.34 | 8,268.49 | 0.674 |
-
----
-
-## 🛠️ Execution & Quick Start
-
-### Step 1: Python Pipeline (Dataset & GNN Model Export)
-
-Run the Python scripts in sequence from the repository root:
+Run from the repository root. A virtual environment is recommended (see the VS Code section below).
 
 ```bash
-# 1. Construct initial training/testing datasets from DAX inputs
+# 1. Scale-generalisation split: train on small/medium instances, hold out the five largest
 python build_dataset.py
 
-# 2. Perform initial training run across seeds
+# 2. Train + evaluate the scale-generalisation ablation for one seed (repeat for seeds 1-5)
 python run_one_seed.py 1
 
-# 3. Construct family-based datasets for held-out cross-family evaluation
+# 3. Topology-generalisation splits: one held-out family at a time
 python build_family_datasets.py
 
-# 4. Run multi-seed evaluation across families
+# 4. Train + evaluate the topology-generalisation ablation, all five families, five seeds each
 python run_family_multiseed.py
 
-# 5. Train the final production model on the complete dataset
+# 5. Build the pooled, non-held-out dataset for the deployed model
+python build_production_dataset.py
+
+# 6. Train the single production model deployed to the Java planner
 python train_production.py
 
-# 6. Export model weights into gnn_weights.txt (used by Java)
+# 7. Export the trained weights
 python export_weights.py
 
-# 7. Validate mathematical correctness between PyTorch and exported weights
+# 8. Convert to the plain-text format the Java planner loads, and check
+#    PyTorch/Java numerical agreement
 python verify_plain_forward.py
 ```
 
-Step 6 generates `gnn_weights.txt` in your working directory.
+Step 8 writes `gnn_weights.txt` to the repository root; this is the file the Java planner reads at scheduling time. Steps 1-4 are for reproducing the generalisation ablations reported in the paper and are not required just to run the scheduler; steps 5-8 are the minimum needed to (re)produce a deployable model.
 
----
+> **Note:** `build_production_dataset.py` reconstructs the production training set by pooling samples from all five workflow families at all four instance sizes, following the same per-workflow sampling routine as `build_dataset.py`. If you already have a `production_data.pkl` from an earlier run, place it in the repository root and skip step 5; `train_production.py` will use it as-is.
 
-### Step 2: Run Java Benchmarks
+### Step 2: Java benchmark
 
-Compile and execute the simulation:
+Compile and run using the source folders and bundled libraries directly (there is no separate `workflowsim.jar`; `sources/` and `examples/` are compiled together):
 
 ```bash
-# Compile the Java planner
-javac -cp ".:workflowsim.jar:lib/*" sources/org/workflowsim/planning/LIWSAGNNPlanningAlgorithm.java
+# Compile everything
+javac -d bin -cp "lib/*" -sourcepath "sources:examples" \
+  examples/org/workflowsim/examples/planning/LIWSABenchmarkExample.java
 
-# Run a single GNN-guided simulation run
-java -cp ".:workflowsim.jar:lib/*" org.workflowsim.examples.planning.LIWSAGNNPlanningAlgorithmExample
-
-# Run full benchmark evaluation
-java -cp ".:workflowsim.jar:lib/*" org.workflowsim.examples.planning.LIWSABenchmarkExample
+# Run the full benchmark: HEFT, Min-Min, MLEAO, LIWSA, and LIWSA-GNN
+# across all 20 benchmark instances and 5 seeds each
+java -cp "bin:lib/*" org.workflowsim.examples.planning.LIWSABenchmarkExample
 ```
+
+This writes `results/benchmark_results.csv`, one row per (workflow instance, algorithm, seed), with makespan, cost, hypervolume, Pareto front size, fairness index, resource utilisation, and speedup.
 
 ---
 
-## 📚 Scope & Generalization Notes
+## 💻 Using VS Code
 
-* **Scale Generalization**: The GNN predictor is validated for generalizing across **problem sizes** within the workflow families included in training (e.g., predicting on 1000-task workflows when trained on smaller instances).
-* **Cross-Family Transfer**: Cross-family transfer to completely unseen DAG topologies requires synthetic data augmentation during pre-training.
+This project already carries Eclipse-style `.project`/`.classpath` metadata, which VS Code's Java tooling reads natively, so no separate Java project setup is needed beyond installing the extension.
+
+**One-time setup:**
+1. Install the **Extension Pack for Java** (`vscjava.vscode-java-pack`) and the **Python** extension (`ms-python.python`) from the Extensions view.
+2. Open the repository root folder in VS Code (`File > Open Folder...`). The Java extension will detect `.classpath` automatically and index `sources/` and `examples/` as source folders with `lib/*.jar` on the build path; watch the bottom status bar for "Java: Ready".
+3. Open a terminal in VS Code (`` Ctrl+` ``) and create a Python virtual environment for the training pipeline:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate        # Windows: .venv\Scripts\activate
+   pip install torch numpy
+   ```
+   Select this environment as the interpreter via the Python extension (`Ctrl+Shift+P` → "Python: Select Interpreter").
+
+**Running the Python pipeline:** open any `.py` file listed in Step 1 above and use Run/Debug (`F5`), or run the commands directly in the integrated terminal with the virtual environment active.
+
+**Running the Java benchmark:** open `examples/org/workflowsim/examples/planning/LIWSABenchmarkExample.java`; the Java extension shows a `Run | Debug` code lens above `public static void main`. Clicking `Run` compiles and executes using the classpath from `.classpath` automatically, writing to `results/benchmark_results.csv` exactly as the command-line invocation above does.
+
+---
+
+## 📚 Scope & Generalisation Notes
+
+* **Scale generalisation** (train on small/medium instances, test on the five largest of the same families): LIWSA-GNN shows a consistent held-out prediction advantage over a depth- and width-matched structure-blind baseline across all five seeds.
+* **Topology generalisation** (train on four families, test on a fifth never seen at any scale): the result is family-dependent rather than uniform. Two families favour LIWSA-GNN, one favours the baseline, and two show no reliable difference. This is a real, seed-replicated finding, not a gap to be closed with more data augmentation; see the paper for the full breakdown and discussion.
 
 ---
 
 ## 📄 License
 
-Copyright 2025–2026 SDU University, Kazakhstan.  
+Copyright 2025–2026 SDU University, Kazakhstan.
 Licensed under the [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0).
